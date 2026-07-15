@@ -24,13 +24,17 @@ type Phase =
 
 function readToken(): string {
   // The launcher passes the token in the fragment so it never reaches server
-  // logs; read it once and strip it from the address bar and history.
+  // logs; read it once, strip it from the address bar and history, and keep
+  // it in per-tab sessionStorage so a refresh does not lose the session.
   const fragment = new URLSearchParams(window.location.hash.replace(/^#/, ''))
   const fromFragment = fragment.get('token')
   if (fromFragment) {
+    sessionStorage.setItem('workbench-token', fromFragment)
     history.replaceState(null, '', window.location.pathname)
     return fromFragment
   }
+  const stored = sessionStorage.getItem('workbench-token')
+  if (stored) return stored
   return new URLSearchParams(window.location.search).get('token') ?? ''
 }
 

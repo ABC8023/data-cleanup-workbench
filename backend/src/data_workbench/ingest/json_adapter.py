@@ -10,10 +10,18 @@ import pyarrow as pa  # type: ignore[import-untyped]
 import pyarrow.parquet as pq  # type: ignore[import-untyped]
 
 from data_workbench.engine.sql import quote_literal
-from data_workbench.ingest.base import MalformedInput, TableHandle
+from data_workbench.ingest.base import (
+    MAX_BATCH_CELLS,
+    MAX_BATCH_ROWS,
+    MAX_BATCH_UTF8_BYTES,
+    MalformedInput,
+    TableHandle,
+    batch_would_exceed_limits,
+    estimate_utf8_bytes,
+    fingerprint_source,
+)
 
 MAX_COLUMNS = 10_000
-BATCH_SIZE = 10_000
 
 
 def _iter_json_objects(source: Path, ndjson: bool) -> Iterator[dict[str, Any]]:
@@ -44,13 +52,20 @@ def _iter_ndjson(stream: BinaryIO) -> Iterator[Any]:
             raise MalformedInput(f"invalid NDJSON record at line {line_number}") from exc
 
 
-def _flatten(value: dict[str, Any], prefix: str = "") -> dict[str, Any]:
-    flattened: dict[str, Any] = {}
+def _flatten(
+    value: dict[str, Any],
+    prefix: str = "",
+    flattened: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    if flattened is None:
+        flattened = {}
     for raw_key, nested_value in value.items():
         key = f"{prefix}.{raw_key}" if prefix else str(raw_key)
         if isinstance(nested_value, dict):
-            flattened.update(_flatten(nested_value, key))
+            _flatten(nested_value, key, flattened)
         else:
+            if key in flattened:
+                raise MalformedInput(f"JSON keys collide after flattening: {key}")
             flattened[key] = nested_value
     return flattened
 
@@ -63,17 +78,6 @@ def _stringify(value: Any) -> str | None:
     if isinstance(value, bool):
         return "true" if value else "false"
     return str(value)
-
-
-def _batched(records: Iterable[dict[str, Any]], size: int) -> Iterator[list[dict[str, Any]]]:
-    batch: list[dict[str, Any]] = []
-    for record in records:
-        batch.append(record)
-        if len(batch) == size:
-            yield batch
-            batch = []
-    if batch:
-        yield batch
 
 
 class JsonAdapter:
@@ -92,17 +96,42 @@ class JsonAdapter:
             raise MalformedInput("JSON contains no object fields")
 
         session_dir.mkdir(parents=True, exist_ok=True)
-        staged = session_dir / "staged-json.parquet"
+        staged = session_dir / f"json-{fingerprint_source(source)}.parquet"
         schema = pa.schema([(key, pa.string()) for key in sorted_keys])
         try:
             with pq.ParquetWriter(staged, schema) as writer:
-                for records in _batched(_iter_json_objects(source, self.ndjson), BATCH_SIZE):
-                    rows = []
-                    for record in records:
-                        flattened = _flatten(record)
-                        rows.append(
-                            {key: _stringify(flattened.get(key)) for key in sorted_keys}
-                        )
+                rows: list[dict[str, str | None]] = []
+                batch_cells = 0
+                batch_utf8_bytes = 0
+                for record in _iter_json_objects(source, self.ndjson):
+                    flattened = _flatten(record)
+                    row = {key: _stringify(flattened.get(key)) for key in sorted_keys}
+                    row_cells = len(sorted_keys)
+                    row_utf8_bytes = estimate_utf8_bytes(row)
+                    if batch_would_exceed_limits(
+                        batch_rows=len(rows),
+                        batch_cells=batch_cells,
+                        batch_utf8_bytes=batch_utf8_bytes,
+                        row_cells=row_cells,
+                        row_utf8_bytes=row_utf8_bytes,
+                    ):
+                        writer.write_table(pa.Table.from_pylist(rows, schema=schema))
+                        rows = []
+                        batch_cells = 0
+                        batch_utf8_bytes = 0
+                    rows.append(row)
+                    batch_cells += row_cells
+                    batch_utf8_bytes += row_utf8_bytes
+                    if (
+                        len(rows) >= MAX_BATCH_ROWS
+                        or batch_cells >= MAX_BATCH_CELLS
+                        or batch_utf8_bytes >= MAX_BATCH_UTF8_BYTES
+                    ):
+                        writer.write_table(pa.Table.from_pylist(rows, schema=schema))
+                        rows = []
+                        batch_cells = 0
+                        batch_utf8_bytes = 0
+                if rows:
                     writer.write_table(pa.Table.from_pylist(rows, schema=schema))
         except (OSError, pa.ArrowException) as exc:
             raise MalformedInput(f"could not stage JSON input: {exc}") from exc

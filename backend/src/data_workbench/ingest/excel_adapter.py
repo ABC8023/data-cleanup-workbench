@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import re
+import unicodedata
 from collections.abc import Iterable, Iterator, Sequence
 from pathlib import Path
 from typing import Any
@@ -9,9 +11,21 @@ import pyarrow as pa  # type: ignore[import-untyped]
 import pyarrow.parquet as pq  # type: ignore[import-untyped]
 
 from data_workbench.engine.sql import quote_literal
-from data_workbench.ingest.base import MalformedInput, TableHandle
+from data_workbench.ingest.base import (
+    MAX_BATCH_CELLS,
+    MAX_BATCH_ROWS,
+    MAX_BATCH_UTF8_BYTES,
+    MalformedInput,
+    TableHandle,
+    batch_would_exceed_limits,
+    estimate_utf8_bytes,
+    fingerprint_source,
+)
 
-BATCH_SIZE = 10_000
+
+def _filename_component(value: str) -> str:
+    normalized = unicodedata.normalize("NFKC", value).casefold()
+    return re.sub(r"[^a-z0-9]+", "-", normalized).strip("-")[:8] or "sheet"
 
 
 def _is_empty_row(row: Sequence[Any]) -> bool:
@@ -48,23 +62,44 @@ def _write_string_parquet(
     staged: Path,
     names: list[str],
     rows: Iterable[Sequence[Any]],
-    batch_size: int,
 ) -> None:
     schema = pa.schema([(name, pa.string()) for name in names])
     batch: list[dict[str, str | None]] = []
+    batch_cells = 0
+    batch_utf8_bytes = 0
     with pq.ParquetWriter(staged, schema) as writer:
         for row in rows:
             if _is_empty_row(row):
                 continue
-            batch.append(
-                {
-                    name: _stringify_excel(row[index] if index < len(row) else None)
-                    for index, name in enumerate(names)
-                }
-            )
-            if len(batch) == batch_size:
+            string_row = {
+                name: _stringify_excel(row[index] if index < len(row) else None)
+                for index, name in enumerate(names)
+            }
+            row_cells = len(names)
+            row_utf8_bytes = estimate_utf8_bytes(string_row)
+            if batch_would_exceed_limits(
+                batch_rows=len(batch),
+                batch_cells=batch_cells,
+                batch_utf8_bytes=batch_utf8_bytes,
+                row_cells=row_cells,
+                row_utf8_bytes=row_utf8_bytes,
+            ):
                 writer.write_table(pa.Table.from_pylist(batch, schema=schema))
                 batch = []
+                batch_cells = 0
+                batch_utf8_bytes = 0
+            batch.append(string_row)
+            batch_cells += row_cells
+            batch_utf8_bytes += row_utf8_bytes
+            if (
+                len(batch) >= MAX_BATCH_ROWS
+                or batch_cells >= MAX_BATCH_CELLS
+                or batch_utf8_bytes >= MAX_BATCH_UTF8_BYTES
+            ):
+                writer.write_table(pa.Table.from_pylist(batch, schema=schema))
+                batch = []
+                batch_cells = 0
+                batch_utf8_bytes = 0
         if batch:
             writer.write_table(pa.Table.from_pylist(batch, schema=schema))
 
@@ -84,6 +119,7 @@ class ExcelAdapter:
 
         handles: list[TableHandle] = []
         try:
+            source_fingerprint = fingerprint_source(source)
             normalized_sheet_names = [
                 sheet.title.strip().casefold() for sheet in workbook.worksheets
             ]
@@ -96,8 +132,11 @@ class ExcelAdapter:
                 if header is None:
                     continue
                 names = _validate_headers(header)
-                staged = session_dir / f"sheet-{index:04d}.parquet"
-                _write_string_parquet(staged, names, rows, BATCH_SIZE)
+                staged = session_dir / (
+                    f"xlsx-{source_fingerprint}-sheet-{index:04d}-"
+                    f"{_filename_component(sheet.title)}.parquet"
+                )
+                _write_string_parquet(staged, names, rows)
                 scan = f"SELECT * FROM read_parquet({quote_literal(staged)})"
                 handles.append(
                     TableHandle(sheet.title, scan, f"xlsx:{sheet.title}:row")

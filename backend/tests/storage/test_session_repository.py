@@ -248,7 +248,7 @@ def test_windows_manifest_promotion_propagates_move_failure(tmp_path):
 
 
 @pytest.mark.asyncio
-async def test_stage_removes_session_when_windows_promotion_fails(
+async def test_stage_removes_session_when_promotion_fails(
     tmp_path,
     monkeypatch,
 ):
@@ -257,9 +257,11 @@ async def test_stage_removes_session_when_windows_promotion_fails(
     def fail_promotion(*_):
         raise OSError(5, "promotion failed")
 
+    # Patch the platform-neutral promotion seam so the cleanup contract is
+    # exercised on every OS; the Windows-specific promotion has its own test.
     monkeypatch.setattr(
         session_repository,
-        "_replace_manifest_windows",
+        "_publish_manifest",
         fail_promotion,
     )
 

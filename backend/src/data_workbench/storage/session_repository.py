@@ -5,7 +5,7 @@ import os
 import re
 import shutil
 from pathlib import Path
-from typing import AsyncIterator, Callable
+from typing import Any, AsyncIterator, Callable
 from uuid import uuid4
 
 from data_workbench.domain.finding import Finding
@@ -45,15 +45,22 @@ def _replace_manifest_windows(
         import ctypes
         from ctypes import wintypes
 
-        kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)  # type: ignore[attr-defined]
-        move_file_ex = kernel32.MoveFileExW
-        move_file_ex.argtypes = [wintypes.LPCWSTR, wintypes.LPCWSTR, wintypes.DWORD]
-        move_file_ex.restype = wintypes.BOOL
+        # ctypes' Windows-only attributes are absent from POSIX typeshed
+        # stubs, so keep the boundary Any-typed for cross-platform mypy.
+        win_ctypes: Any = ctypes
+        kernel32 = win_ctypes.WinDLL("kernel32", use_last_error=True)
+        raw_move_file_ex: Any = kernel32.MoveFileExW
+        raw_move_file_ex.argtypes = [
+            wintypes.LPCWSTR,
+            wintypes.LPCWSTR,
+            wintypes.DWORD,
+        ]
+        raw_move_file_ex.restype = wintypes.BOOL
+        move_file_ex = raw_move_file_ex
 
         def windows_error() -> OSError:
-            return ctypes.WinError(  # type: ignore[attr-defined]
-                ctypes.get_last_error()
-            )
+            error: OSError = win_ctypes.WinError(win_ctypes.get_last_error())
+            return error
 
         error_factory = windows_error
 

@@ -38,15 +38,16 @@ function readToken(): string {
   return new URLSearchParams(window.location.search).get('token') ?? ''
 }
 
-function defaultClient(): ApiClient {
-  return new ApiClient('', readToken())
-}
-
 export function App({ api: injectedApi }: { api?: ApiClient }) {
   // Create the client exactly once: readToken() strips the URL fragment on
   // first read, so re-evaluating a default parameter on re-render would
   // produce token-less clients for every later request.
-  const [api] = useState(() => injectedApi ?? defaultClient())
+  const [boot] = useState(() => {
+    if (injectedApi) return { api: injectedApi, missingToken: false }
+    const token = readToken()
+    return { api: new ApiClient('', token), missingToken: token === '' }
+  })
+  const api = boot.api
   const [session, setSession] = useState<SessionManifest | null>(null)
   const [phase, setPhase] = useState<Phase>({ kind: 'idle' })
   const [steps, setSteps] = useState<RecipeStep[]>([])
@@ -137,6 +138,16 @@ export function App({ api: injectedApi }: { api?: ApiClient }) {
   return (
     <main>
       <h1>Data Cleanup Workbench</h1>
+      {boot.missingToken && (
+        <section role="alert">
+          <p>
+            No session token — this tab cannot talk to the workbench. Open
+            the address printed by the launcher (it ends in{' '}
+            <code>#token=…</code>), or append <code>?token=…</code> to the
+            URL, then reload.
+          </p>
+        </section>
+      )}
       <UploadPanel api={api} onSession={onSession} />
       {phase.kind === 'profiling' && (
         <section aria-live="polite">

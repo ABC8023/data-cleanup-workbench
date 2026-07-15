@@ -5,7 +5,7 @@ import os
 import re
 import shutil
 from pathlib import Path
-from typing import AsyncIterator
+from typing import AsyncIterator, Callable
 from uuid import uuid4
 
 from data_workbench.domain.session import SessionManifest
@@ -15,6 +15,8 @@ _UNSUPPORTED_DIRECTORY_FSYNC_ERRNOS = {
     getattr(errno, "ENOTSUP", errno.EINVAL),
     getattr(errno, "EOPNOTSUPP", errno.EINVAL),
 }
+_MOVEFILE_REPLACE_EXISTING = 0x1
+_MOVEFILE_WRITE_THROUGH = 0x8
 
 
 def _fsync_directory_posix(directory: Path) -> None:
@@ -30,11 +32,43 @@ def _fsync_directory_posix(directory: Path) -> None:
         os.close(descriptor)
 
 
-def _fsync_directory(directory: Path) -> None:
+def _replace_manifest_windows(
+    source: Path,
+    destination: Path,
+    *,
+    move_file_ex: Callable[[str, str, int], int] | None = None,
+    error_factory: Callable[[], OSError] | None = None,
+) -> None:
+    if move_file_ex is None or error_factory is None:
+        import ctypes
+        from ctypes import wintypes
+
+        kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)  # type: ignore[attr-defined]
+        move_file_ex = kernel32.MoveFileExW
+        move_file_ex.argtypes = [wintypes.LPCWSTR, wintypes.LPCWSTR, wintypes.DWORD]
+        move_file_ex.restype = wintypes.BOOL
+
+        def windows_error() -> OSError:
+            return ctypes.WinError(  # type: ignore[attr-defined]
+                ctypes.get_last_error()
+            )
+
+        error_factory = windows_error
+
+    flags = _MOVEFILE_REPLACE_EXISTING | _MOVEFILE_WRITE_THROUGH
+    if not move_file_ex(str(source), str(destination), flags):
+        raise error_factory()
+
+
+def _publish_manifest(
+    source: Path,
+    destination: Path,
+    directory: Path,
+) -> None:
     if os.name == "nt":
-        # Python cannot open Windows directory handles with backup semantics,
-        # so the standard library provides no portable directory-fsync path.
+        _replace_manifest_windows(source, destination)
         return
+    os.replace(source, destination)
     _fsync_directory_posix(directory)
 
 
@@ -77,7 +111,8 @@ class SessionRepository:
                     raise ValueError("stream size did not match Content-Length")
                 target.flush()
                 os.fsync(target.fileno())
-            os.chmod(source_path, 0o444)
+                os.chmod(source_path, 0o444)
+                os.fsync(target.fileno())
             manifest = SessionManifest(
                 id=session_id,
                 filename=filename,
@@ -93,8 +128,7 @@ class SessionRepository:
                 )
                 target.flush()
                 os.fsync(target.fileno())
-            os.replace(temporary_manifest_path, manifest_path)
-            _fsync_directory(directory)
+            _publish_manifest(temporary_manifest_path, manifest_path, directory)
         except BaseException:
             _remove_staging_directory(directory, source_path)
             raise

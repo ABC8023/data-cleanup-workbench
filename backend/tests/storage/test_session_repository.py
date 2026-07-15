@@ -73,16 +73,8 @@ async def test_stage_rejects_stream_smaller_than_declared_without_partial_sessio
 
 
 @pytest.mark.asyncio
-async def test_stage_publishes_manifest_with_atomic_replace(tmp_path, monkeypatch):
+async def test_stage_publishes_manifest_atomically(tmp_path):
     repo = SessionRepository(tmp_path, max_file_bytes=16)
-    replacements = []
-    real_replace = os.replace
-
-    def record_replace(source, destination):
-        replacements.append((source, destination))
-        real_replace(source, destination)
-
-    monkeypatch.setattr(os, "replace", record_replace)
 
     async def chunks():
         yield b"data"
@@ -90,7 +82,6 @@ async def test_stage_publishes_manifest_with_atomic_replace(tmp_path, monkeypatc
     manifest = await repo.stage("sample.csv", 4, chunks())
 
     manifest_path = manifest.source_path.parent / "session.json"
-    assert replacements == [(manifest_path.with_suffix(".json.tmp"), manifest_path)]
     assert manifest_path.is_file()
     assert not manifest_path.with_suffix(".json.tmp").exists()
 
@@ -102,38 +93,60 @@ async def test_stage_durably_seals_source_before_publishing_manifest(
 ):
     repo = SessionRepository(tmp_path, max_file_bytes=16)
     events = []
+    directory_descriptor = 999
     real_chmod = os.chmod
     real_fsync = os.fsync
     real_replace = os.replace
+    replaced = False
 
     def record_fsync(descriptor):
+        nonlocal replaced
         directory = next(tmp_path.iterdir())
-        if not events:
-            assert (directory / "source.bin").read_bytes() == b"data"
-            events.append("fsync:source.bin")
-        else:
-            manifest_text = (directory / "session.json.tmp").read_text(
-                encoding="utf-8"
-            )
+        temporary_manifest_path = directory / "session.json.tmp"
+        source_path = directory / "source.bin"
+        if descriptor == directory_descriptor:
+            assert replaced
+            events.append("fsync:directory")
+        elif temporary_manifest_path.exists():
+            manifest_text = temporary_manifest_path.read_text(encoding="utf-8")
             assert '"filename": "sample.csv"' in manifest_text
             events.append("fsync:session.json.tmp")
-        real_fsync(descriptor)
+            real_fsync(descriptor)
+        elif source_path.stat().st_mode & 0o222 == 0:
+            events.append("fsync:source.bin:metadata")
+            real_fsync(descriptor)
+        else:
+            assert (directory / "source.bin").read_bytes() == b"data"
+            events.append("fsync:source.bin:data")
+            real_fsync(descriptor)
 
     def record_chmod(path, mode):
-        assert events == ["fsync:source.bin"]
+        if mode != 0o444:
+            return real_chmod(path, mode)
+        assert events == ["fsync:source.bin:data"]
         real_chmod(path, mode)
         assert path.stat().st_mode & 0o222 == 0
         events.append("chmod:source.bin")
 
     def record_replace(source, destination):
+        nonlocal replaced
         assert events == [
-            "fsync:source.bin",
+            "fsync:source.bin:data",
             "chmod:source.bin",
+            "fsync:source.bin:metadata",
             "fsync:session.json.tmp",
         ]
+        replaced = True
         events.append("replace:session.json")
         real_replace(source, destination)
 
+    monkeypatch.setattr(session_repository.os, "name", "posix")
+    monkeypatch.setattr(os, "open", lambda *_: directory_descriptor)
+    monkeypatch.setattr(
+        os,
+        "close",
+        lambda descriptor: events.append("close:directory"),
+    )
     monkeypatch.setattr(os, "fsync", record_fsync)
     monkeypatch.setattr(os, "chmod", record_chmod)
     monkeypatch.setattr(os, "replace", record_replace)
@@ -144,10 +157,13 @@ async def test_stage_durably_seals_source_before_publishing_manifest(
     await repo.stage("sample.csv", 4, chunks())
 
     assert events == [
-        "fsync:source.bin",
+        "fsync:source.bin:data",
         "chmod:source.bin",
+        "fsync:source.bin:metadata",
         "fsync:session.json.tmp",
         "replace:session.json",
+        "fsync:directory",
+        "close:directory",
     ]
 
 
@@ -163,7 +179,7 @@ async def test_stage_removes_read_only_source_when_manifest_sync_fails(
     def fail_manifest_sync(descriptor):
         nonlocal sync_count
         sync_count += 1
-        if sync_count == 2:
+        if sync_count == 3:
             raise OSError("manifest fsync failed")
         real_fsync(descriptor)
 
@@ -195,3 +211,62 @@ def test_directory_sync_closes_descriptor_and_propagates_unexpected_errors(
         session_repository._fsync_directory_posix(tmp_path)
 
     assert closed == [99]
+
+
+def test_windows_manifest_promotion_uses_replace_and_write_through(tmp_path):
+    calls = []
+
+    def move_file_ex(source, destination, flags):
+        calls.append((source, destination, flags))
+        return 1
+
+    source = tmp_path / "session.json.tmp"
+    destination = tmp_path / "session.json"
+
+    session_repository._replace_manifest_windows(
+        source,
+        destination,
+        move_file_ex=move_file_ex,
+        error_factory=lambda: OSError("unused"),
+    )
+
+    assert calls == [(str(source), str(destination), 0x1 | 0x8)]
+
+
+def test_windows_manifest_promotion_propagates_move_failure(tmp_path):
+    expected_error = OSError(5, "access denied")
+
+    with pytest.raises(OSError, match="access denied") as captured:
+        session_repository._replace_manifest_windows(
+            tmp_path / "session.json.tmp",
+            tmp_path / "session.json",
+            move_file_ex=lambda *_: 0,
+            error_factory=lambda: expected_error,
+        )
+
+    assert captured.value is expected_error
+
+
+@pytest.mark.asyncio
+async def test_stage_removes_session_when_windows_promotion_fails(
+    tmp_path,
+    monkeypatch,
+):
+    repo = SessionRepository(tmp_path, max_file_bytes=16)
+
+    def fail_promotion(*_):
+        raise OSError(5, "promotion failed")
+
+    monkeypatch.setattr(
+        session_repository,
+        "_replace_manifest_windows",
+        fail_promotion,
+    )
+
+    async def chunks():
+        yield b"data"
+
+    with pytest.raises(OSError, match="promotion failed"):
+        await repo.stage("sample.csv", 4, chunks())
+
+    assert list(tmp_path.iterdir()) == []

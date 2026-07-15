@@ -8,7 +8,12 @@ from pydantic import BaseModel, ConfigDict
 
 from data_workbench.api.dependencies import Services, get_services
 from data_workbench.api.routes.edits import _base_handle
+from data_workbench.domain.duplicates import DuplicateConfig
 from data_workbench.domain.recipe import Recipe
+from data_workbench.duplicates.engine import (
+    DuplicateEngine,
+    InvalidDuplicateConfig,
+)
 from data_workbench.domain.session import SessionManifest
 from data_workbench.editing.engine import resolve_handle
 from data_workbench.ingest.base import (
@@ -200,6 +205,65 @@ async def execute_recipe(
 
     job = services.jobs.submit("execute", work)
     return {"job_id": job.id}
+
+
+class FuzzyDuplicatesRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    config: DuplicateConfig
+    table: str | None = None
+    max_candidates: int = 1000
+
+
+class ExactDuplicatesRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    columns: list[str]
+    table: str | None = None
+
+
+def _duplicate_handle(
+    services: Services, session_id: str, table: str | None
+) -> tuple[SessionManifest, TableHandle]:
+    manifest = services.sessions.get(session_id)
+    if manifest is None:
+        raise HTTPException(status_code=404, detail="session not found")
+    base = _base_handle(manifest, table)
+    return manifest, resolve_handle(manifest.source_path.parent, base)
+
+
+@router.post("/api/sessions/{session_id}/duplicates/fuzzy")
+def find_fuzzy_duplicates(
+    session_id: str,
+    payload: FuzzyDuplicatesRequest,
+    services: Services = Depends(get_services),
+) -> list[dict[str, object]]:
+    manifest, handle = _duplicate_handle(services, session_id, payload.table)
+    with services.duckdb.connect(manifest.source_path.parent) as connection:
+        try:
+            groups = DuplicateEngine().find_fuzzy(
+                connection, handle, payload.config, payload.max_candidates
+            )
+        except InvalidDuplicateConfig as error:
+            raise HTTPException(status_code=400, detail=str(error)) from error
+    return [group.model_dump(mode="json") for group in groups]
+
+
+@router.post("/api/sessions/{session_id}/duplicates/exact")
+def find_exact_duplicates(
+    session_id: str,
+    payload: ExactDuplicatesRequest,
+    services: Services = Depends(get_services),
+) -> list[dict[str, object]]:
+    manifest, handle = _duplicate_handle(services, session_id, payload.table)
+    with services.duckdb.connect(manifest.source_path.parent) as connection:
+        try:
+            groups = DuplicateEngine().find_exact(
+                connection, handle, payload.columns
+            )
+        except InvalidDuplicateConfig as error:
+            raise HTTPException(status_code=400, detail=str(error)) from error
+    return [group.model_dump(mode="json") for group in groups]
 
 
 @router.get("/api/sessions/{session_id}/execution")

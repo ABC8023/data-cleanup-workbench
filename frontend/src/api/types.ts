@@ -75,6 +75,46 @@ export interface DuplicateDecision {
   survivor_row_id: string | null
 }
 
+export interface ArtifactRecord {
+  id: string
+  kind:
+    | 'cleaned'
+    | 'recipe'
+    | 'report_html'
+    | 'report_json'
+    | 'dictionary_md'
+    | 'dictionary_json'
+    | 'quarantine'
+  filename: string
+  sha256: string
+  size_bytes: number
+}
+
+export interface OutputManifest {
+  source_fingerprint: string
+  recipe_hash: string
+  app_version: string
+  row_reconciliation: Record<string, number>
+  artifacts: ArtifactRecord[]
+  state: 'complete'
+}
+
+export interface AiPayloadPreview {
+  id: string
+  provider: string
+  payload: {
+    columns: Record<string, unknown>[]
+    approved_samples: Record<string, string[]>
+  }
+  expires_at: string
+}
+
+export interface AiAttempt {
+  suggestion: { columns: { name: string; description: string }[] } | null
+  fallback: Record<string, unknown>
+  error: { code: string; message: string } | null
+}
+
 export interface SavedProfile {
   profile: DatasetProfile
   findings: Finding[]

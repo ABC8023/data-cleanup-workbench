@@ -16,6 +16,7 @@ Task 10: complete (see task-10-report.md)
 Task 11: complete (see task-11-report.md)
 Task 12: complete (see task-12-report.md)
 Task 13: complete (see task-13-report.md)
+Task 14: complete (see task-14-report.md)
 
 Backend complete through Task 11; frontend shell (upload/progress/overview) done.
 Remaining: Task 13 (findings/recipe/duplicates UI), Task 14 (dictionary/outputs UI),

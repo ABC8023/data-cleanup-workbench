@@ -1,5 +1,8 @@
 import type {
+  AiAttempt,
+  AiPayloadPreview,
   JobStatus,
+  OutputManifest,
   PreviewResult,
   Recipe,
   SavedProfile,
@@ -83,5 +86,69 @@ export class ApiClient {
       method: 'POST',
       body: JSON.stringify({ recipe }),
     })
+  }
+
+  executeRecipe(
+    sessionId: string,
+    recipe: Recipe,
+    outputFormat: 'csv' | 'parquet',
+  ): Promise<{ job_id: string }> {
+    return this.request(`/api/sessions/${sessionId}/recipe/execute`, {
+      method: 'POST',
+      body: JSON.stringify({
+        recipe,
+        output_format: outputFormat,
+        approved: true,
+      }),
+    })
+  }
+
+  saveDictionary(
+    sessionId: string,
+    descriptions: Record<string, string>,
+  ): Promise<Record<string, string>> {
+    return this.request(`/api/sessions/${sessionId}/dictionary`, {
+      method: 'PUT',
+      body: JSON.stringify({ descriptions }),
+    })
+  }
+
+  buildArtifacts(sessionId: string): Promise<OutputManifest> {
+    return this.request(`/api/sessions/${sessionId}/artifacts`, {
+      method: 'POST',
+    })
+  }
+
+  previewAiDictionary(
+    sessionId: string,
+    selectedSamples: Record<string, string[]>,
+  ): Promise<AiPayloadPreview> {
+    return this.request(`/api/sessions/${sessionId}/ai/dictionary/preview`, {
+      method: 'POST',
+      body: JSON.stringify({ selected_samples: selectedSamples }),
+    })
+  }
+
+  approveAiDictionary(sessionId: string, previewId: string): Promise<AiAttempt> {
+    return this.request(`/api/sessions/${sessionId}/ai/dictionary/approve`, {
+      method: 'POST',
+      body: JSON.stringify({ preview_id: previewId }),
+    })
+  }
+
+  async downloadArtifact(sessionId: string, artifactId: string): Promise<void> {
+    const response = await fetch(
+      `${this.baseUrl}/api/sessions/${sessionId}/artifacts/${artifactId}`,
+      { headers: { 'X-Session-Token': this.token } },
+    )
+    if (!response.ok) throw new ApiError(response.status, await response.text())
+    const disposition = response.headers.get('content-disposition') ?? ''
+    const filename = /filename="([^"]+)"/.exec(disposition)?.[1] ?? artifactId
+    const url = URL.createObjectURL(await response.blob())
+    const anchor = document.createElement('a')
+    anchor.href = url
+    anchor.download = filename
+    anchor.click()
+    URL.revokeObjectURL(url)
   }
 }

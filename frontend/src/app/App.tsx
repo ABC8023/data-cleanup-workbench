@@ -1,8 +1,16 @@
 import { useCallback, useRef, useState } from 'react'
 import { ApiClient } from '../api/client'
-import type { RecipeStep, SavedProfile, SessionManifest } from '../api/types'
+import type {
+  OutputManifest,
+  RecipeStep,
+  SavedProfile,
+  SessionManifest,
+} from '../api/types'
+import { DictionaryEditor } from '../features/dictionary/DictionaryEditor'
 import { IssueList } from '../features/issues/IssueList'
 import { Overview } from '../features/overview/Overview'
+import type { ExecutionView } from '../features/outputs/OutputPanel'
+import { OutputPanel } from '../features/outputs/OutputPanel'
 import { RecipeEditor } from '../features/recipe/RecipeEditor'
 import { UploadPanel } from '../features/upload/UploadPanel'
 
@@ -23,7 +31,46 @@ export function App({ api = defaultClient() }: { api?: ApiClient }) {
   const [session, setSession] = useState<SessionManifest | null>(null)
   const [phase, setPhase] = useState<Phase>({ kind: 'idle' })
   const [steps, setSteps] = useState<RecipeStep[]>([])
+  const [execution, setExecution] = useState<ExecutionView>({ state: 'idle' })
+  const [executionJobId, setExecutionJobId] = useState<string | null>(null)
+  const [manifest, setManifest] = useState<OutputManifest | null>(null)
   const cancelled = useRef(false)
+
+  const execute = useCallback(async () => {
+    if (!session) return
+    setManifest(null)
+    setExecution({ state: 'running', message: 'Executing recipe…' })
+    try {
+      const { job_id } = await api.executeRecipe(
+        session.id,
+        {
+          recipe_version: 1,
+          source_fingerprint: session.sha256,
+          steps,
+        },
+        'parquet',
+      )
+      setExecutionJobId(job_id)
+      for (;;) {
+        const job = await api.getJob(job_id)
+        if (job.state === 'succeeded') {
+          setManifest(await api.buildArtifacts(session.id))
+          setExecution({ state: 'idle' })
+          return
+        }
+        if (job.state === 'failed' || job.state === 'cancelled') {
+          setExecution({
+            state: job.state,
+            errorCode: job.error_code ?? undefined,
+          })
+          return
+        }
+        await new Promise((resolve) => setTimeout(resolve, POLL_INTERVAL_MS))
+      }
+    } catch {
+      setExecution({ state: 'failed', errorCode: 'execution_failed' })
+    }
+  }, [api, session, steps])
 
   const previewWith = useCallback(
     (candidate: RecipeStep) => {
@@ -102,6 +149,34 @@ export function App({ api = defaultClient() }: { api?: ApiClient }) {
             onApprove={(step) => setSteps((current) => [...current, step])}
           />
           <RecipeEditor steps={steps} onChange={setSteps} />
+          {session && (
+            <>
+              <DictionaryEditor
+                columns={phase.saved.profile.columns}
+                descriptions={{}}
+                onSave={(descriptions) =>
+                  void api.saveDictionary(session.id, descriptions)
+                }
+                api={{
+                  previewAi: (selected) =>
+                    api.previewAiDictionary(session.id, selected),
+                  approveAi: (previewId) =>
+                    api.approveAiDictionary(session.id, previewId),
+                }}
+              />
+              <OutputPanel
+                execution={execution}
+                manifest={manifest}
+                onExecute={() => void execute()}
+                onCancel={() =>
+                  executionJobId && void api.cancelJob(executionJobId)
+                }
+                onDownload={(artifactId) =>
+                  void api.downloadArtifact(session.id, artifactId)
+                }
+              />
+            </>
+          )}
         </>
       )}
     </main>

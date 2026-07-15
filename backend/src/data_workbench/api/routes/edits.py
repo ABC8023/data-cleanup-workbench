@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-from pathlib import Path
-
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, ConfigDict
 
@@ -47,16 +45,16 @@ def _load_session(session_id: str, repo: SessionRepository) -> SessionManifest:
 
 
 def _base_handle(manifest: SessionManifest, table: str | None) -> TableHandle:
-    suffix = Path(manifest.filename).suffix.lower()
-    adapter = AdapterRegistry.adapters.get(suffix)
-    if adapter is None:
-        raise HTTPException(
-            status_code=400, detail=f"unsupported source format {suffix!r}"
-        )
     session_dir = manifest.source_path.parent
     try:
-        handles = adapter.inspect(manifest.source_path, session_dir)
-    except (MalformedInput, UnsupportedFormat) as error:
+        handles = AdapterRegistry().inspect_declared(
+            manifest.source_path, manifest.filename, session_dir
+        )
+    except UnsupportedFormat as error:
+        raise HTTPException(
+            status_code=400, detail=f"unsupported source format '{error}'"
+        ) from error
+    except MalformedInput as error:
         raise HTTPException(status_code=400, detail=str(error)) from error
     if table is None:
         return handles[0]

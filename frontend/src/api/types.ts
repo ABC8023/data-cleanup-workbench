@@ -35,6 +35,44 @@ export interface Finding {
   confidence: number
   risk_level: 'safe' | 'review_required' | 'informational'
   examples: Record<string, string>[]
+  suggested_operation: { operation: string } | null
+  evidence: Record<string, string | number>
+}
+
+export type RecipeStep = {
+  id: string
+  operation: string
+  columns: string[]
+  on_error: 'preserve' | 'set_null' | 'quarantine'
+} & Record<string, unknown>
+
+export interface Recipe {
+  recipe_version: 1
+  source_fingerprint: string
+  steps: RecipeStep[]
+}
+
+export interface PreviewResult {
+  before_rows: Record<string, unknown>[]
+  after_rows: Record<string, unknown>[]
+  schema_before: Record<string, string>
+  schema_after: Record<string, string>
+  null_deltas: Record<string, number>
+  row_count_delta: number
+  validation_failures: string[]
+}
+
+export interface DuplicateGroup {
+  id: string
+  row_ids: string[]
+  display_values: string[]
+  confidence: number
+  evidence: Record<string, number>
+}
+
+export interface DuplicateDecision {
+  action: 'keep_separate' | 'remove_record' | 'merge_fields'
+  survivor_row_id: string | null
 }
 
 export interface SavedProfile {

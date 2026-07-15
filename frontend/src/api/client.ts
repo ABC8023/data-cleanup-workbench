@@ -1,4 +1,10 @@
-import type { JobStatus, SavedProfile, SessionManifest } from './types'
+import type {
+  JobStatus,
+  PreviewResult,
+  Recipe,
+  SavedProfile,
+  SessionManifest,
+} from './types'
 
 export class ApiError extends Error {
   readonly status: number
@@ -70,5 +76,12 @@ export class ApiClient {
 
   getProfile(sessionId: string): Promise<SavedProfile> {
     return this.request(`/api/sessions/${sessionId}/profile`)
+  }
+
+  previewRecipe(sessionId: string, recipe: Recipe): Promise<PreviewResult> {
+    return this.request(`/api/sessions/${sessionId}/recipe/preview`, {
+      method: 'POST',
+      body: JSON.stringify({ recipe }),
+    })
   }
 }

@@ -1,7 +1,9 @@
 import { useCallback, useRef, useState } from 'react'
 import { ApiClient } from '../api/client'
-import type { SavedProfile, SessionManifest } from '../api/types'
+import type { RecipeStep, SavedProfile, SessionManifest } from '../api/types'
+import { IssueList } from '../features/issues/IssueList'
 import { Overview } from '../features/overview/Overview'
+import { RecipeEditor } from '../features/recipe/RecipeEditor'
 import { UploadPanel } from '../features/upload/UploadPanel'
 
 const POLL_INTERVAL_MS = 250
@@ -20,7 +22,20 @@ function defaultClient(): ApiClient {
 export function App({ api = defaultClient() }: { api?: ApiClient }) {
   const [session, setSession] = useState<SessionManifest | null>(null)
   const [phase, setPhase] = useState<Phase>({ kind: 'idle' })
+  const [steps, setSteps] = useState<RecipeStep[]>([])
   const cancelled = useRef(false)
+
+  const previewWith = useCallback(
+    (candidate: RecipeStep) => {
+      if (!session) return Promise.reject(new Error('no session'))
+      return api.previewRecipe(session.id, {
+        recipe_version: 1,
+        source_fingerprint: session.sha256,
+        steps: [...steps, candidate],
+      })
+    },
+    [api, session, steps],
+  )
 
   const profile = useCallback(
     async (target: SessionManifest) => {
@@ -76,10 +91,18 @@ export function App({ api = defaultClient() }: { api?: ApiClient }) {
         </section>
       )}
       {phase.kind === 'profiled' && (
-        <Overview
-          profile={phase.saved.profile}
-          findingCount={phase.saved.findings.length}
-        />
+        <>
+          <Overview
+            profile={phase.saved.profile}
+            findingCount={phase.saved.findings.length}
+          />
+          <IssueList
+            findings={phase.saved.findings}
+            onPreview={previewWith}
+            onApprove={(step) => setSteps((current) => [...current, step])}
+          />
+          <RecipeEditor steps={steps} onChange={setSteps} />
+        </>
       )}
     </main>
   )

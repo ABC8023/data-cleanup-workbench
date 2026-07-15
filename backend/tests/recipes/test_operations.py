@@ -40,8 +40,7 @@ def operation_runner() -> OperationRunner:
             )
         compiled = compile_step(step, "SELECT * FROM source_rows")
         rows = connection.execute(
-            f"SELECT {column} FROM ({compiled.sql}) ORDER BY rid",
-            compiled.parameters,
+            f"SELECT {column} FROM ({compiled.sql}) ORDER BY rid"
         ).fetchall()
         return [row[0] for row in rows]
 
@@ -145,9 +144,10 @@ def test_quarantine_error_query_counts_failures() -> None:
 
     compiled = compile_step(step, "SELECT * FROM source_rows")
 
-    assert compiled.error_query is not None
+    assert compiled.failure_predicate is not None
     counted = connection.execute(
-        compiled.error_query, compiled.error_parameters
+        "SELECT count(*) FROM (SELECT * FROM source_rows)"
+        f" WHERE {compiled.failure_predicate}"
     ).fetchone()
     assert counted is not None and counted[0] == 2
 
@@ -261,10 +261,10 @@ def test_compile_recipe_chains_steps_and_orders_parameters() -> None:
         ],
     )
 
-    compiled = compile_recipe(recipe, "SELECT * FROM source_rows")
+    compiled_sql = compile_recipe(recipe, "SELECT * FROM source_rows")
     rows = connection.execute(
-        f"SELECT name FROM ({compiled.sql}) ORDER BY rid", compiled.parameters
+        f"SELECT name FROM ({compiled_sql}) ORDER BY rid"
     ).fetchall()
 
     assert [row[0] for row in rows] == [None, "ADA", None]
-    assert compiled.error_queries == {}
+    assert "IS NOT DISTINCT FROM 'N/A'" in compiled_sql

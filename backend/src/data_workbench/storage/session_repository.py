@@ -170,6 +170,25 @@ class SessionRepository:
             json.dumps(updated.model_dump(mode="json"), indent=2),
         )
 
+    def save_execution(self, session_id: str, result: dict[str, object]) -> None:
+        if self.get(session_id) is None:
+            raise KeyError(session_id)
+        self._write_durable(
+            self.root / session_id, "execution.json", json.dumps(result, indent=2)
+        )
+
+    def load_execution(self, session_id: str) -> dict[str, object] | None:
+        if self.get(session_id) is None:
+            return None
+        try:
+            raw = (self.root / session_id / "execution.json").read_text(
+                encoding="utf-8"
+            )
+        except FileNotFoundError:
+            return None
+        loaded: dict[str, object] = json.loads(raw)
+        return loaded
+
     def load_profile(self, session_id: str) -> dict[str, object] | None:
         if self.get(session_id) is None:
             return None

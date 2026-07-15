@@ -44,32 +44,51 @@ def compile_step(step: RecipeStep, input_sql: str) -> CompiledOperation:
 
 
 @dataclass(frozen=True)
-class CompiledQuery:
-    sql: str
-    parameters: list[object]
+class CompiledStep:
+    step_id: str
+    operation: str
+    input_sql: str
+    output_sql: str
+    failure_predicate: str | None
 
 
-@dataclass(frozen=True)
-class CompiledRecipe:
-    sql: str
-    parameters: list[object]
-    error_queries: dict[str, CompiledQuery]
+def compile_chain(
+    recipe: Recipe,
+    input_sql: str,
+    *,
+    exclude_failures: bool,
+) -> list[CompiledStep]:
+    """Fold ordered steps into nested SELECTs.
 
-
-def compile_recipe(recipe: Recipe, input_sql: str) -> CompiledRecipe:
+    With ``exclude_failures`` (preview and execution), rows a quarantine step
+    cannot convert are filtered out of that step's input so they disappear
+    from the cleaned output; callers capture them separately via
+    ``failure_predicate`` over ``input_sql``.
+    """
+    plan: list[CompiledStep] = []
     sql = input_sql
-    parameters: list[object] = []
-    error_queries: dict[str, CompiledQuery] = {}
     for step in recipe.steps:
         compiled = compile_step(step, sql)
-        if compiled.error_query is not None:
-            # The error query embeds the step's input relation, so its text
-            # binds the input's parameters first, then the predicate's.
-            error_queries[step.id] = CompiledQuery(
-                compiled.error_query,
-                [*parameters, *compiled.error_parameters],
+        output_sql = compiled.sql
+        if compiled.failure_predicate is not None and exclude_failures:
+            filtered = (
+                f"SELECT * FROM ({sql})"
+                f" WHERE NOT coalesce({compiled.failure_predicate}, false)"
             )
-        sql = compiled.sql
-        # Operation placeholders precede the wrapped input in the SQL text.
-        parameters = [*compiled.parameters, *parameters]
-    return CompiledRecipe(sql=sql, parameters=parameters, error_queries=error_queries)
+            output_sql = compile_step(step, filtered).sql
+        plan.append(
+            CompiledStep(
+                step_id=step.id,
+                operation=step.operation,
+                input_sql=sql,
+                output_sql=output_sql,
+                failure_predicate=compiled.failure_predicate,
+            )
+        )
+        sql = output_sql
+    return plan
+
+
+def compile_recipe(recipe: Recipe, input_sql: str) -> str:
+    plan = compile_chain(recipe, input_sql, exclude_failures=True)
+    return plan[-1].output_sql if plan else f"SELECT * FROM ({input_sql})"

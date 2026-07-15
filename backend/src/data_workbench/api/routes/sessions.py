@@ -1,16 +1,57 @@
 import asyncio
 import shutil
 from pathlib import Path
+from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Request
+from pydantic import BaseModel, ConfigDict
 
 from data_workbench.api.dependencies import Services, get_services
+from data_workbench.api.routes.edits import _base_handle
+from data_workbench.domain.recipe import Recipe
 from data_workbench.domain.session import SessionManifest
-from data_workbench.ingest.base import MalformedInput, UnsupportedFormat
+from data_workbench.editing.engine import resolve_handle
+from data_workbench.ingest.base import (
+    MalformedInput,
+    TableHandle,
+    UnsupportedFormat,
+)
 from data_workbench.jobs.manager import JobContext, JobFailure
+from data_workbench.recipes.executor import ExecutionError, RecipeExecutor
 from data_workbench.storage.session_repository import SessionRepository
 
 router = APIRouter()
+
+
+class RecipePreviewRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    recipe: Recipe
+    table: str | None = None
+
+
+class RecipeExecuteRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    recipe: Recipe
+    table: str | None = None
+    output_format: Literal["csv", "parquet"] = "parquet"
+    approved: bool = False
+
+
+def _recipe_session(
+    services: Services, session_id: str, recipe: Recipe, table: str | None
+) -> tuple[SessionManifest, TableHandle]:
+    manifest = services.sessions.get(session_id)
+    if manifest is None:
+        raise HTTPException(status_code=404, detail="session not found")
+    if recipe.source_fingerprint != manifest.sha256:
+        raise HTTPException(
+            status_code=409,
+            detail="recipe fingerprint does not match the session source",
+        )
+    base = _base_handle(manifest, table)
+    return manifest, resolve_handle(manifest.source_path.parent, base)
 
 
 def get_repo(request: Request) -> SessionRepository:
@@ -100,4 +141,73 @@ def get_profile(
     saved = repo.load_profile(session_id)
     if saved is None:
         raise HTTPException(status_code=404, detail="profile not found")
+    return saved
+
+
+@router.post("/api/sessions/{session_id}/recipe/preview")
+def preview_recipe(
+    session_id: str,
+    payload: RecipePreviewRequest,
+    services: Services = Depends(get_services),
+) -> dict[str, object]:
+    manifest, handle = _recipe_session(
+        services, session_id, payload.recipe, payload.table
+    )
+    with services.duckdb.connect(manifest.source_path.parent) as connection:
+        preview = RecipeExecutor().preview(connection, handle, payload.recipe)
+    return preview.model_dump(mode="json")
+
+
+@router.post("/api/sessions/{session_id}/recipe/execute", status_code=202)
+async def execute_recipe(
+    session_id: str,
+    payload: RecipeExecuteRequest,
+    services: Services = Depends(get_services),
+) -> dict[str, str]:
+    if not payload.approved:
+        raise HTTPException(
+            status_code=400,
+            detail="execution changes data and requires approved=true"
+            " after reviewing a preview",
+        )
+    manifest, handle = _recipe_session(
+        services, session_id, payload.recipe, payload.table
+    )
+    session_dir = manifest.source_path.parent
+
+    async def work(context: JobContext) -> None:
+        def run() -> None:
+            context.publish("execute", 0, 2, "Executing recipe")
+            with services.duckdb.connect(session_dir) as connection:
+                try:
+                    result = RecipeExecutor().execute(
+                        connection,
+                        handle,
+                        payload.recipe,
+                        session_dir / "outputs",
+                        payload.output_format,
+                        context,
+                    )
+                except ExecutionError as error:
+                    raise JobFailure("execution_failed") from error
+            context.publish("persist", 1, 2, "Saving execution result")
+            services.sessions.save_execution(
+                manifest.id, result.model_dump(mode="json")
+            )
+            context.publish("persist", 2, 2, "Execution complete")
+
+        await asyncio.to_thread(run)
+
+    job = services.jobs.submit("execute", work)
+    return {"job_id": job.id}
+
+
+@router.get("/api/sessions/{session_id}/execution")
+def get_execution(
+    session_id: str,
+    repo: SessionRepository = Depends(get_repo),
+) -> dict[str, object]:
+    saved = repo.load_execution(session_id)
+    if saved is None:
+        raise HTTPException(status_code=404, detail="execution not found")
     return saved

@@ -4,7 +4,7 @@ from data_workbench.domain.recipe import CastNumberStep, ParseDateStep
 from data_workbench.engine.sql import quote_identifier, quote_literal
 from data_workbench.recipes.compiled import (
     CompiledOperation,
-    error_count_query,
+    combined_predicate,
     replace_projection,
 )
 
@@ -32,30 +32,23 @@ def _failure_predicate(converted: str, original: str) -> str:
 
 class ParseDateOperation:
     def _converted(self, step: ParseDateStep, text: str) -> str:
-        attempts = ", ".join(f"try_strptime({text}, ?)" for _ in step.formats)
+        attempts = ", ".join(
+            f"try_strptime({text}, {quote_literal(fmt)})" for fmt in step.formats
+        )
         return f"CAST(CAST(COALESCE({attempts}) AS DATE) AS VARCHAR)"
 
     def compile(self, step: ParseDateStep, input_sql: str) -> CompiledOperation:
         replacements: dict[str, str] = {}
-        parameters: list[object] = []
         predicates: list[str] = []
-        error_parameters: list[object] = []
         for column in step.columns:
             text = _text(column)
             converted = self._converted(step, text)
             replacements[column] = _apply_on_error(step, converted, text)
-            parameters.extend(step.formats)
             if step.on_error == "quarantine":
                 predicates.append(_failure_predicate(converted, text))
-                error_parameters.extend(step.formats)
-        error_query = (
-            error_count_query(predicates, input_sql) if predicates else None
-        )
         return CompiledOperation(
             sql=replace_projection(replacements, input_sql),
-            parameters=parameters,
-            error_query=error_query,
-            error_parameters=error_parameters,
+            failure_predicate=combined_predicate(predicates) if predicates else None,
         )
 
 
@@ -95,12 +88,7 @@ class CastNumberOperation:
             replacements[column] = _apply_on_error(step, converted, text)
             if step.on_error == "quarantine":
                 predicates.append(_failure_predicate(converted, text))
-        error_query = (
-            error_count_query(predicates, input_sql) if predicates else None
-        )
         return CompiledOperation(
             sql=replace_projection(replacements, input_sql),
-            parameters=[],
-            error_query=error_query,
-            error_parameters=[],
+            failure_predicate=combined_predicate(predicates) if predicates else None,
         )

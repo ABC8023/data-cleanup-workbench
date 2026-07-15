@@ -16,13 +16,8 @@ class UnsupportedDecisionContext(ValueError):
     """Raised when a duplicate decision cannot compile without group context."""
 
 
-def _no_error(sql: str, parameters: list[object] | None = None) -> CompiledOperation:
-    return CompiledOperation(
-        sql=sql,
-        parameters=parameters or [],
-        error_query=None,
-        error_parameters=[],
-    )
+def _no_error(sql: str) -> CompiledOperation:
+    return CompiledOperation(sql=sql)
 
 
 class DropColumnOperation:

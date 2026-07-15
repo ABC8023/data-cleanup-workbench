@@ -9,7 +9,9 @@ from data_workbench.domain.recipe import (
 from data_workbench.engine.sql import quote_identifier
 from data_workbench.recipes.compiled import CompiledOperation
 
-ROW_ID_COLUMN = "__workbench_row_id"
+# Distinct from the executor's quarantine row id so the two never collide
+# when a dedup step runs inside a row-id-threaded chain.
+DEDUP_ROW_ID_COLUMN = "__workbench_dedup_row_id"
 
 
 class UnsupportedDecisionContext(ValueError):
@@ -37,7 +39,7 @@ class ExactDeduplicateOperation:
     def compile(self, step: ExactDeduplicateStep, input_sql: str) -> CompiledOperation:
         if not step.columns:
             return _no_error(f"SELECT DISTINCT * FROM ({input_sql})")
-        row_id = quote_identifier(ROW_ID_COLUMN)
+        row_id = quote_identifier(DEDUP_ROW_ID_COLUMN)
         partition = ", ".join(quote_identifier(name) for name in step.columns)
         direction = "ASC" if step.keep == "first" else "DESC"
         return _no_error(

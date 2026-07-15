@@ -22,9 +22,20 @@ type Phase =
   | { kind: 'profiled'; saved: SavedProfile }
   | { kind: 'failed'; code: string }
 
+function readToken(): string {
+  // The launcher passes the token in the fragment so it never reaches server
+  // logs; read it once and strip it from the address bar and history.
+  const fragment = new URLSearchParams(window.location.hash.replace(/^#/, ''))
+  const fromFragment = fragment.get('token')
+  if (fromFragment) {
+    history.replaceState(null, '', window.location.pathname)
+    return fromFragment
+  }
+  return new URLSearchParams(window.location.search).get('token') ?? ''
+}
+
 function defaultClient(): ApiClient {
-  const token = new URLSearchParams(window.location.search).get('token') ?? ''
-  return new ApiClient('', token)
+  return new ApiClient('', readToken())
 }
 
 export function App({ api = defaultClient() }: { api?: ApiClient }) {

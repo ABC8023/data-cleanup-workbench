@@ -11,3 +11,5 @@ dist/
 build/
 *.egg-info/
 
+backend/src/data_workbench/static/
+benchmarks/generated/

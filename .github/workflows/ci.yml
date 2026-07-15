@@ -1,0 +1,89 @@
+name: ci
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  test:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, macos-latest, ubuntu-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: python -m pip install -e ".[dev]"
+      - run: python -m pytest backend/tests -q
+      - run: python -m ruff check backend/src backend/tests benchmarks scripts
+      - run: python -m mypy backend/src
+      - run: npm ci --prefix frontend
+      - run: npm --prefix frontend test -- --run
+      - run: npm --prefix frontend run build
+
+  e2e:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: python -m pip install -e ".[dev]"
+      - run: npm ci --prefix frontend
+      - run: npm --prefix frontend exec playwright install --with-deps chromium
+      - run: python scripts/build_frontend.py
+      - run: npm --prefix frontend exec playwright test
+
+  smoke-benchmark:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python -m pip install -e ".[dev]"
+      - run: python benchmarks/generate_dataset.py --size-gb 0.1 --seed 20260715
+      - run: >-
+          python benchmarks/run_benchmark.py
+          --input benchmarks/generated/canonical.parquet
+          --max-rss-gb 6
+          --output benchmark-smoke.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: benchmark-smoke
+          path: benchmark-smoke.json
+
+  # The canonical 5 GB benchmark runs only on the documented reference
+  # machine (8 cores, 16 GB RAM, SSD); trigger it manually.
+  canonical-benchmark:
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: [self-hosted, benchmark]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python -m pip install -e ".[dev]"
+      - run: python benchmarks/generate_dataset.py --size-gb 5 --seed 20260715
+      - run: >-
+          python benchmarks/run_benchmark.py
+          --input benchmarks/generated/canonical.csv
+          --max-rss-gb 6
+          --output benchmark-canonical.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: benchmark-canonical
+          path: benchmark-canonical.json

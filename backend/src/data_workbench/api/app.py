@@ -1,4 +1,9 @@
-from fastapi import Depends, FastAPI, Header, HTTPException
+from pathlib import Path
+from typing import Awaitable, Callable
+
+from fastapi import Depends, FastAPI, Header, HTTPException, Request, Response
+from fastapi.responses import JSONResponse
+from fastapi.staticfiles import StaticFiles
 
 from data_workbench.ai.gateway import AiGateway, PreviewStore, utc_now
 from data_workbench.ai.providers import DisabledProvider, HttpDictionaryProvider
@@ -19,14 +24,31 @@ from data_workbench.profiling.profiler import Profiler
 from data_workbench.storage.session_repository import SessionRepository
 
 MAX_HEAVY_JOBS = 1
+DEFAULT_STATIC_DIR = Path(__file__).resolve().parent.parent / "static"
 
 
-def create_app(config: AppConfig, token: str) -> FastAPI:
+def create_app(
+    config: AppConfig,
+    token: str,
+    static_dir: Path | None = None,
+) -> FastAPI:
     app = FastAPI()
 
     def require_token(x_session_token: str | None = Header(default=None)) -> None:
         if x_session_token != token:
             raise HTTPException(status_code=401, detail="invalid session token")
+
+    @app.middleware("http")
+    async def enforce_origin(
+        request: Request,
+        call_next: Callable[[Request], Awaitable[Response]],
+    ) -> Response:
+        origin = request.headers.get("origin")
+        if origin is not None and origin != config.allowed_origin:
+            return JSONResponse(
+                status_code=403, content={"detail": "origin not allowed"}
+            )
+        return await call_next(request)
 
     services = Services(
         sessions=SessionRepository(config.workspace, config.max_file_bytes),
@@ -57,4 +79,9 @@ def create_app(config: AppConfig, token: str) -> FastAPI:
     app.include_router(jobs_router, dependencies=[Depends(require_token)])
     app.include_router(artifacts_router, dependencies=[Depends(require_token)])
     app.include_router(ai_router, dependencies=[Depends(require_token)])
+    resolved_static = static_dir if static_dir is not None else DEFAULT_STATIC_DIR
+    if resolved_static.is_dir():
+        app.mount(
+            "/", StaticFiles(directory=resolved_static, html=True), name="ui"
+        )
     return app

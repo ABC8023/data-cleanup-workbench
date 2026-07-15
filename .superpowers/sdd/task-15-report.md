@@ -60,11 +60,22 @@ see "Deferred to CI" below.
   token / 200 with token, 403 for `Origin: https://example.com`, and shut
   down cleanly.
 
-## Deferred to CI / reference hardware
+## Post-task local verification (follow-up session)
 
-1. Playwright browser run (spec + config + CI job ready; browser binaries not
-   downloaded on this machine).
-2. PyInstaller packaging + per-platform smoke (script ready; needs
-   `pip install pyinstaller` and the three CI OS runners).
-3. Canonical 5 GB benchmark on the documented 8-core/16 GB reference machine
-   (workflow-dispatch CI job ready; the 0.1 GB smoke validates the harness).
+1. **Playwright E2E: RUN AND PASSING locally** (Chromium, real backend via
+   the launcher, 3.9 s). It caught two real bugs, both fixed in
+   `fix: keep the session token across re-renders and hide provenance
+   columns`: the App re-created its default ApiClient on every render after
+   `readToken()` had stripped the URL fragment (every post-first-render
+   request sent an empty token — unit tests missed it because they inject
+   the client), and the profiler exposed the `filename` scan-provenance
+   column as user data (leaking staged paths into the overview, dictionary,
+   and AI payloads).
+2. **Canonical 5 GB benchmark: run locally** — see
+   `benchmarks/canonical-result.json`: 68,108,680 rows (5.37 GB CSV) in
+   25.4 min, peak RSS 4.48 GB (budget 6 GB), reconciliation exact. 16-core machine; the documented reference runner remains the CI job for release sign-off.
+
+## Still deferred to CI
+
+- PyInstaller packaging + per-platform smoke (script ready; needs
+  `pip install pyinstaller` and the three CI OS runners).

@@ -1,0 +1,19 @@
+{
+  "input_path": "benchmarks\\generated\\canonical.csv",
+  "input_bytes": 5368709180,
+  "machine": {
+    "platform": "Windows-11-10.0.26200-SP0",
+    "machine": "AMD64",
+    "cpu_count": 16,
+    "python": "3.12.13"
+  },
+  "wall_seconds": 1522.325,
+  "peak_rss_bytes": 4483588096,
+  "session_disk_bytes": 1707560214,
+  "input_rows": 68108680,
+  "output_rows": 64905049,
+  "removed_rows": 649756,
+  "quarantined_rows": 2553875,
+  "finding_count": 8,
+  "cleaned_sha256": "393aa8fe40c342710ec689c43247b02fe869acfd8895812ff03503eaccfefa0d"
+}

@@ -6,7 +6,7 @@ import duckdb
 
 from data_workbench.domain.profile import ColumnProfile, DatasetProfile
 from data_workbench.engine.sql import quote_identifier
-from data_workbench.ingest.base import TableHandle
+from data_workbench.ingest.base import SYSTEM_COLUMNS, TableHandle
 
 EXAMPLE_LIMIT = 10
 TOP_VALUE_LIMIT = 10
@@ -30,6 +30,10 @@ class Profiler:
 
         columns: list[ColumnProfile] = []
         for name, inferred_type, *_ in described:
+            # Scan-provenance columns carry staged local paths; they are an
+            # ingestion detail, not user data.
+            if str(name) in SYSTEM_COLUMNS:
+                continue
             cancel_check()
             columns.append(
                 self._profile_column(connection, view, str(name), str(inferred_type), row_count)

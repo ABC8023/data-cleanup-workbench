@@ -38,7 +38,11 @@ function defaultClient(): ApiClient {
   return new ApiClient('', readToken())
 }
 
-export function App({ api = defaultClient() }: { api?: ApiClient }) {
+export function App({ api: injectedApi }: { api?: ApiClient }) {
+  // Create the client exactly once: readToken() strips the URL fragment on
+  // first read, so re-evaluating a default parameter on re-render would
+  // produce token-less clients for every later request.
+  const [api] = useState(() => injectedApi ?? defaultClient())
   const [session, setSession] = useState<SessionManifest | null>(null)
   const [phase, setPhase] = useState<Phase>({ kind: 'idle' })
   const [steps, setSteps] = useState<RecipeStep[]>([])

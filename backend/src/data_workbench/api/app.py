@@ -1,5 +1,6 @@
 from fastapi import Depends, FastAPI, Header, HTTPException
 
+from data_workbench.api.routes.edits import router as edits_router
 from data_workbench.api.routes.health import router as health_router
 from data_workbench.api.routes.sessions import router as sessions_router
 from data_workbench.core.config import AppConfig
@@ -18,4 +19,5 @@ def create_app(config: AppConfig, token: str) -> FastAPI:
     app.state.session_repository = SessionRepository(config.workspace, config.max_file_bytes)
     app.include_router(health_router, dependencies=[Depends(require_token)])
     app.include_router(sessions_router, dependencies=[Depends(require_token)])
+    app.include_router(edits_router, dependencies=[Depends(require_token)])
     return app

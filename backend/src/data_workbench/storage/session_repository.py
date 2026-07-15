@@ -170,6 +170,11 @@ class SessionRepository:
             json.dumps(updated.model_dump(mode="json"), indent=2),
         )
 
+    def save_recipe(self, session_id: str, recipe_yaml: str) -> None:
+        if self.get(session_id) is None:
+            raise KeyError(session_id)
+        self._write_durable(self.root / session_id, "recipe.yaml", recipe_yaml)
+
     def save_execution(self, session_id: str, result: dict[str, object]) -> None:
         if self.get(session_id) is None:
             raise KeyError(session_id)

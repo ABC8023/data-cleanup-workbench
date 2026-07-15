@@ -1,6 +1,7 @@
 from fastapi import Depends, FastAPI, Header, HTTPException
 
 from data_workbench.api.dependencies import Services
+from data_workbench.api.routes.artifacts import router as artifacts_router
 from data_workbench.api.routes.edits import router as edits_router
 from data_workbench.api.routes.health import router as health_router
 from data_workbench.api.routes.jobs import router as jobs_router
@@ -39,4 +40,5 @@ def create_app(config: AppConfig, token: str) -> FastAPI:
     app.include_router(sessions_router, dependencies=[Depends(require_token)])
     app.include_router(edits_router, dependencies=[Depends(require_token)])
     app.include_router(jobs_router, dependencies=[Depends(require_token)])
+    app.include_router(artifacts_router, dependencies=[Depends(require_token)])
     return app

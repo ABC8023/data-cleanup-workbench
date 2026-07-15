@@ -3,6 +3,7 @@ import shutil
 from pathlib import Path
 from typing import Literal
 
+import yaml  # type: ignore[import-untyped]
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, ConfigDict
 
@@ -198,6 +199,12 @@ async def execute_recipe(
             context.publish("persist", 1, 2, "Saving execution result")
             services.sessions.save_execution(
                 manifest.id, result.model_dump(mode="json")
+            )
+            services.sessions.save_recipe(
+                manifest.id,
+                yaml.safe_dump(
+                    payload.recipe.model_dump(mode="json"), sort_keys=False
+                ),
             )
             context.publish("persist", 2, 2, "Execution complete")
 

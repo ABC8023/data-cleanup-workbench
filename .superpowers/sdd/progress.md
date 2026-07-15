@@ -14,8 +14,11 @@ Task 8: complete (see task-8-report.md)
 Task 9: complete (see task-9-report.md)
 Task 10: complete (see task-10-report.md)
 Task 11: complete (see task-11-report.md)
+Task 12: complete (see task-12-report.md)
 
-Backend complete through Task 11. Remaining: Tasks 12-14 (React frontend), Task 15 (packaging, E2E, 5 GB benchmark).
+Backend complete through Task 11; frontend shell (upload/progress/overview) done.
+Remaining: Task 13 (findings/recipe/duplicates UI), Task 14 (dictionary/outputs UI),
+Task 15 (packaging, E2E, 5 GB benchmark).
 
 Note: continued on a new machine (Windows 11, user `User`); verification runs via
 uv-managed CPython 3.12.13 with the vendored `.deps` on PYTHONPATH because the

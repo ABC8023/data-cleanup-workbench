@@ -19,13 +19,10 @@ from data_workbench.domain.edit import (
     TrimWhitespaceCommand,
 )
 from data_workbench.engine.sql import quote_identifier, quote_literal
-from data_workbench.ingest.base import TableHandle
+from data_workbench.ingest.base import SYSTEM_COLUMNS, TableHandle
 
 PREVIEW_ROWS = 20
 EDIT_LOG_FILENAME = "edits.json"
-# Scan-level provenance columns (from read_csv/read_parquet filename=true) carry
-# staged local paths, so edits never expose or propagate them.
-SYSTEM_COLUMNS = frozenset({"filename"})
 
 
 class UnknownColumn(ValueError):

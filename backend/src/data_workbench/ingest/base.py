@@ -7,6 +7,9 @@ from pathlib import Path
 from typing import Mapping, Protocol
 
 HASH_CHUNK_BYTES = 1024 * 1024
+# Scan-level provenance columns (from read_csv/read_parquet filename=true) carry
+# staged local paths; downstream features must not expose or propagate them.
+SYSTEM_COLUMNS = frozenset({"filename"})
 MAX_BATCH_ROWS = 10_000
 MAX_BATCH_CELLS = 50_000
 MAX_BATCH_UTF8_BYTES = 8 * 1024 * 1024

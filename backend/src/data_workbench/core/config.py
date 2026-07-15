@@ -12,3 +12,4 @@ class AppConfig(BaseModel):
     memory_limit: str = "4GB"
     max_threads: int = 4
     allowed_origin: str = "http://127.0.0.1"
+    ai_provider_url: str | None = None

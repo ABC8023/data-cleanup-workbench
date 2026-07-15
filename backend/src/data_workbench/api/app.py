@@ -1,8 +1,12 @@
 from fastapi import Depends, FastAPI, Header, HTTPException
 
+from data_workbench.ai.gateway import AiGateway, PreviewStore, utc_now
+from data_workbench.ai.providers import DisabledProvider, HttpDictionaryProvider
 from data_workbench.api.dependencies import Services
+from data_workbench.api.routes.ai import router as ai_router
 from data_workbench.api.routes.artifacts import router as artifacts_router
 from data_workbench.api.routes.edits import router as edits_router
+from data_workbench.artifacts.dictionary import build_dictionary
 from data_workbench.api.routes.health import router as health_router
 from data_workbench.api.routes.jobs import router as jobs_router
 from data_workbench.api.routes.sessions import router as sessions_router
@@ -32,13 +36,25 @@ def create_app(config: AppConfig, token: str) -> FastAPI:
         findings=FindingRegistry.default(),
         jobs=JobManager(max_heavy_jobs=MAX_HEAVY_JOBS),
     )
+    provider = (
+        HttpDictionaryProvider(config.ai_provider_url)
+        if config.ai_provider_url
+        else DisabledProvider()
+    )
     app.state.config = config
     app.state.token_dependency = require_token
     app.state.services = services
     app.state.session_repository = services.sessions
+    app.state.ai_gateway = AiGateway(
+        provider,
+        PreviewStore(),
+        clock=utc_now,
+        deterministic_dictionary=lambda profile: build_dictionary(profile, {}),
+    )
     app.include_router(health_router, dependencies=[Depends(require_token)])
     app.include_router(sessions_router, dependencies=[Depends(require_token)])
     app.include_router(edits_router, dependencies=[Depends(require_token)])
     app.include_router(jobs_router, dependencies=[Depends(require_token)])
     app.include_router(artifacts_router, dependencies=[Depends(require_token)])
+    app.include_router(ai_router, dependencies=[Depends(require_token)])
     return app

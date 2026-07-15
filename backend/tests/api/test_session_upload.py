@@ -1,10 +1,11 @@
 import json
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from types import SimpleNamespace
 
 from fastapi.testclient import TestClient
 
 from data_workbench.api.app import create_app
+from data_workbench.api.routes import sessions
 from data_workbench.core.config import AppConfig
 from data_workbench.storage.session_repository import SessionRepository
 
@@ -147,3 +148,22 @@ def test_session_routes_require_authentication(tmp_path):
 
     assert upload.status_code == 401
     assert fetch.status_code == 401
+
+
+def test_upload_normalizes_windows_filename_separators_on_posix(
+    tmp_path,
+    monkeypatch,
+):
+    app = create_app(AppConfig(workspace=tmp_path, max_file_bytes=16), token="secret")
+    client = TestClient(app)
+    monkeypatch.setattr(sessions, "Path", PurePosixPath)
+
+    response = client.post(
+        "/api/sessions",
+        params={"filename": r"..\..\sample.csv"},
+        headers={"X-Session-Token": "secret"},
+        content=b"data",
+    )
+
+    assert response.status_code == 200
+    assert response.json()["filename"] == "sample.csv"

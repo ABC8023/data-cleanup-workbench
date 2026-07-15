@@ -28,8 +28,9 @@ async def create_session(
         raise HTTPException(status_code=413, detail="file exceeds 5 GB limit")
     if shutil.disk_usage(config.workspace).free < size * 2:
         raise HTTPException(status_code=507, detail="insufficient local disk space")
+    display_filename = Path(filename.replace("\\", "/")).name
     try:
-        manifest = await repo.stage(Path(filename).name, size, request.stream())
+        manifest = await repo.stage(display_filename, size, request.stream())
     except ValueError as error:
         raise HTTPException(status_code=400, detail=str(error)) from error
     return manifest.model_dump(mode="json")

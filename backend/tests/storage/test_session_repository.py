@@ -1,8 +1,10 @@
+import errno
 import hashlib
 import os
 
 import pytest
 
+from data_workbench.storage import session_repository
 from data_workbench.storage.session_repository import SessionRepository
 
 
@@ -91,3 +93,105 @@ async def test_stage_publishes_manifest_with_atomic_replace(tmp_path, monkeypatc
     assert replacements == [(manifest_path.with_suffix(".json.tmp"), manifest_path)]
     assert manifest_path.is_file()
     assert not manifest_path.with_suffix(".json.tmp").exists()
+
+
+@pytest.mark.asyncio
+async def test_stage_durably_seals_source_before_publishing_manifest(
+    tmp_path,
+    monkeypatch,
+):
+    repo = SessionRepository(tmp_path, max_file_bytes=16)
+    events = []
+    real_chmod = os.chmod
+    real_fsync = os.fsync
+    real_replace = os.replace
+
+    def record_fsync(descriptor):
+        directory = next(tmp_path.iterdir())
+        if not events:
+            assert (directory / "source.bin").read_bytes() == b"data"
+            events.append("fsync:source.bin")
+        else:
+            manifest_text = (directory / "session.json.tmp").read_text(
+                encoding="utf-8"
+            )
+            assert '"filename": "sample.csv"' in manifest_text
+            events.append("fsync:session.json.tmp")
+        real_fsync(descriptor)
+
+    def record_chmod(path, mode):
+        assert events == ["fsync:source.bin"]
+        real_chmod(path, mode)
+        assert path.stat().st_mode & 0o222 == 0
+        events.append("chmod:source.bin")
+
+    def record_replace(source, destination):
+        assert events == [
+            "fsync:source.bin",
+            "chmod:source.bin",
+            "fsync:session.json.tmp",
+        ]
+        events.append("replace:session.json")
+        real_replace(source, destination)
+
+    monkeypatch.setattr(os, "fsync", record_fsync)
+    monkeypatch.setattr(os, "chmod", record_chmod)
+    monkeypatch.setattr(os, "replace", record_replace)
+
+    async def chunks():
+        yield b"data"
+
+    await repo.stage("sample.csv", 4, chunks())
+
+    assert events == [
+        "fsync:source.bin",
+        "chmod:source.bin",
+        "fsync:session.json.tmp",
+        "replace:session.json",
+    ]
+
+
+@pytest.mark.asyncio
+async def test_stage_removes_read_only_source_when_manifest_sync_fails(
+    tmp_path,
+    monkeypatch,
+):
+    repo = SessionRepository(tmp_path, max_file_bytes=16)
+    real_fsync = os.fsync
+    sync_count = 0
+
+    def fail_manifest_sync(descriptor):
+        nonlocal sync_count
+        sync_count += 1
+        if sync_count == 2:
+            raise OSError("manifest fsync failed")
+        real_fsync(descriptor)
+
+    monkeypatch.setattr(os, "fsync", fail_manifest_sync)
+
+    async def chunks():
+        yield b"data"
+
+    with pytest.raises(OSError, match="manifest fsync failed"):
+        await repo.stage("sample.csv", 4, chunks())
+
+    assert list(tmp_path.iterdir()) == []
+
+
+def test_directory_sync_closes_descriptor_and_propagates_unexpected_errors(
+    tmp_path,
+    monkeypatch,
+):
+    closed = []
+    monkeypatch.setattr(session_repository.os, "open", lambda *_: 99)
+    monkeypatch.setattr(
+        session_repository.os,
+        "fsync",
+        lambda _: (_ for _ in ()).throw(OSError(errno.EIO, "disk error")),
+    )
+    monkeypatch.setattr(session_repository.os, "close", closed.append)
+
+    with pytest.raises(OSError, match="disk error"):
+        session_repository._fsync_directory_posix(tmp_path)
+
+    assert closed == [99]

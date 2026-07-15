@@ -19,7 +19,16 @@ class AdapterRegistry:
     }
 
     def inspect(self, source: Path, session_dir: Path) -> list[TableHandle]:
-        adapter = self.adapters.get(source.suffix.lower())
+        return self.inspect_declared(source, source.name, session_dir)
+
+    def inspect_declared(
+        self,
+        source: Path,
+        declared_filename: str,
+        session_dir: Path,
+    ) -> list[TableHandle]:
+        suffix = Path(declared_filename).suffix.lower()
+        adapter = self.adapters.get(suffix)
         if adapter is None:
-            raise UnsupportedFormat(source.suffix)
+            raise UnsupportedFormat(suffix)
         return adapter.inspect(source, session_dir)

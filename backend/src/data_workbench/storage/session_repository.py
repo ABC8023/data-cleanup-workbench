@@ -8,6 +8,8 @@ from pathlib import Path
 from typing import AsyncIterator, Callable
 from uuid import uuid4
 
+from data_workbench.domain.finding import Finding
+from data_workbench.domain.profile import DatasetProfile
 from data_workbench.domain.session import SessionManifest
 
 _UNSUPPORTED_DIRECTORY_FSYNC_ERRNOS = {
@@ -133,6 +135,55 @@ class SessionRepository:
             _remove_staging_directory(directory, source_path)
             raise
         return manifest
+
+    def _write_durable(self, directory: Path, filename: str, payload: str) -> None:
+        destination = directory / filename
+        temporary = directory / f"{filename}.tmp"
+        with temporary.open("w", encoding="utf-8") as target:
+            target.write(payload)
+            target.flush()
+            os.fsync(target.fileno())
+        _publish_manifest(temporary, destination, directory)
+
+    def save_profile(
+        self,
+        session_id: str,
+        profile: DatasetProfile,
+        findings: list[Finding],
+    ) -> None:
+        manifest = self.get(session_id)
+        if manifest is None:
+            raise KeyError(session_id)
+        directory = self.root / session_id
+        self._write_durable(directory, "profile.json", profile.model_dump_json(indent=2))
+        self._write_durable(
+            directory,
+            "findings.json",
+            json.dumps(
+                [finding.model_dump(mode="json") for finding in findings], indent=2
+            ),
+        )
+        updated = manifest.model_copy(update={"state": "profiled"})
+        self._write_durable(
+            directory,
+            "session.json",
+            json.dumps(updated.model_dump(mode="json"), indent=2),
+        )
+
+    def load_profile(self, session_id: str) -> dict[str, object] | None:
+        if self.get(session_id) is None:
+            return None
+        directory = self.root / session_id
+        try:
+            profile = json.loads(
+                (directory / "profile.json").read_text(encoding="utf-8")
+            )
+            findings = json.loads(
+                (directory / "findings.json").read_text(encoding="utf-8")
+            )
+        except FileNotFoundError:
+            return None
+        return {"profile": profile, "findings": findings}
 
     def get(self, session_id: str) -> SessionManifest | None:
         if re.fullmatch(r"[0-9a-f]{32}", session_id) is None:

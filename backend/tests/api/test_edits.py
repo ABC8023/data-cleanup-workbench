@@ -103,6 +103,43 @@ def test_approved_edits_apply_chain_and_record_history(tmp_path: Path) -> None:
     assert [entry["sequence"] for entry in history.json()] == [1, 2]
 
 
+def test_rows_preview_reflects_applied_edits(tmp_path: Path) -> None:
+    client = make_client(tmp_path)
+    session_id = upload_session(client)
+
+    initial = client.get(f"/api/sessions/{session_id}/rows", headers=HEADERS)
+    assert initial.status_code == 200
+    body = initial.json()
+    assert body["columns"] == ["customer_id", "name", "city"]
+    assert body["total_rows"] == 3
+    assert body["rows"][0] == ["c1", " Ada ", "kul"]
+
+    preview = client.post(
+        f"/api/sessions/{session_id}/edits/preview",
+        headers=HEADERS,
+        json={"command": "move column city before name"},
+    )
+    assert preview.status_code == 200
+    assert preview.json()["columns_after"] == ["customer_id", "city", "name"]
+    assert preview.json()["affected_row_count"] == 0
+
+    applied = client.post(
+        f"/api/sessions/{session_id}/edits",
+        headers=HEADERS,
+        json={"command": "move column name to end", "approved": True},
+    )
+    assert applied.status_code == 200
+    assert applied.json()["command"]["operation"] == "move_column"
+
+    after = client.get(
+        f"/api/sessions/{session_id}/rows",
+        headers=HEADERS,
+        params={"limit": 2},
+    )
+    assert after.json()["columns"] == ["customer_id", "city", "name"]
+    assert len(after.json()["rows"]) == 2
+
+
 def test_edit_errors_map_to_bad_request(tmp_path: Path) -> None:
     client = make_client(tmp_path)
     session_id = upload_session(client)

@@ -7,6 +7,7 @@ import type {
   SessionManifest,
 } from '../api/types'
 import { DictionaryEditor } from '../features/dictionary/DictionaryEditor'
+import { DataEditor } from '../features/editor/DataEditor'
 import { IssueList } from '../features/issues/IssueList'
 import { Overview } from '../features/overview/Overview'
 import type { ExecutionView } from '../features/outputs/OutputPanel'
@@ -178,6 +179,16 @@ export function App({ api: injectedApi }: { api?: ApiClient }) {
             profile={phase.saved.profile}
             findingCount={phase.saved.findings.length}
           />
+          {session && (
+            <DataEditor
+              api={{
+                getRows: () => api.getRows(session.id),
+                previewEdit: (command) => api.previewEdit(session.id, command),
+                applyEdit: (command) => api.applyEdit(session.id, command),
+                listEdits: () => api.listEdits(session.id),
+              }}
+            />
+          )}
           <IssueList
             findings={phase.saved.findings}
             onPreview={previewWith}

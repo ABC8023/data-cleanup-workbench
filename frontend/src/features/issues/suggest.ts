@@ -10,7 +10,12 @@ export function suggestStep(finding: Finding): RecipeStep | null {
   }
   switch (operation) {
     case 'parse_date':
-      return { ...base, operation, formats: ['%Y-%m-%d', '%d/%m/%Y'] }
+      return {
+        ...base,
+        operation,
+        formats: ['%Y-%m-%d', '%d/%m/%Y'],
+        output_format: '%Y-%m-%d',
+      }
     case 'cast_number':
       return { ...base, operation, target: 'decimal' }
     case 'replace_value':

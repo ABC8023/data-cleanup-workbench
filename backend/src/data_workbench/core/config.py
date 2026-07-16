@@ -1,4 +1,5 @@
 from pathlib import Path
+from typing import Literal
 
 from pydantic import BaseModel, ConfigDict
 
@@ -12,4 +13,7 @@ class AppConfig(BaseModel):
     memory_limit: str = "4GB"
     max_threads: int = 4
     allowed_origin: str = "http://127.0.0.1"
+    # "anthropic" uses the built-in Claude provider; ai_provider_url posts the
+    # approved payload to a custom HTTPS endpoint instead.
+    ai_provider: Literal["anthropic"] | None = None
     ai_provider_url: str | None = None

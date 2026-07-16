@@ -21,6 +21,7 @@ dependencies = [
   "pyyaml>=6,<7",
   "keyring>=25,<26",
   "httpx>=0.28,<0.29",
+  "anthropic>=0.100,<1",
 ]
 
 [project.scripts]

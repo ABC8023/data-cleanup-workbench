@@ -6,7 +6,12 @@ from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from data_workbench.ai.gateway import AiGateway, PreviewStore, utc_now
-from data_workbench.ai.providers import DisabledProvider, HttpDictionaryProvider
+from data_workbench.ai.providers import (
+    AiProvider,
+    AnthropicDictionaryProvider,
+    DisabledProvider,
+    HttpDictionaryProvider,
+)
 from data_workbench.api.dependencies import Services
 from data_workbench.api.routes.ai import router as ai_router
 from data_workbench.api.routes.artifacts import router as artifacts_router
@@ -58,11 +63,13 @@ def create_app(
         findings=FindingRegistry.default(),
         jobs=JobManager(max_heavy_jobs=MAX_HEAVY_JOBS),
     )
-    provider = (
-        HttpDictionaryProvider(config.ai_provider_url)
-        if config.ai_provider_url
-        else DisabledProvider()
-    )
+    provider: AiProvider
+    if config.ai_provider == "anthropic":
+        provider = AnthropicDictionaryProvider()
+    elif config.ai_provider_url:
+        provider = HttpDictionaryProvider(config.ai_provider_url)
+    else:
+        provider = DisabledProvider()
     app.state.config = config
     app.state.token_dependency = require_token
     app.state.services = services

@@ -4,6 +4,7 @@ import pytest
 
 from data_workbench.domain.edit import (
     DropColumnCommand,
+    MoveColumnCommand,
     RenameColumnCommand,
     ReplaceValueCommand,
     SetCaseCommand,
@@ -48,6 +49,18 @@ from data_workbench.editing.parser import UnsupportedCommand, parse_command
             "  trim   whitespace in column name ",
             TrimWhitespaceCommand(column="name"),
         ),
+        (
+            "move column city before name",
+            MoveColumnCommand(column="city", position="before", reference="name"),
+        ),
+        (
+            'Move Column "full name" AFTER city',
+            MoveColumnCommand(
+                column="full name", position="after", reference="city"
+            ),
+        ),
+        ("move column city to start", MoveColumnCommand(column="city", position="start")),
+        ("move column city to END", MoveColumnCommand(column="city", position="end")),
     ],
 )
 def test_parse_supported_commands(text: str, expected: object) -> None:
@@ -65,6 +78,9 @@ def test_parse_supported_commands(text: str, expected: object) -> None:
         "update table set a = 1",
         "drop column a; drop column b",
         "uppercase column a where a = 'x'",
+        "move column a",
+        "move column a to middle",
+        "move column a next to b",
     ],
 )
 def test_parse_rejects_unsupported_commands(text: str) -> None:

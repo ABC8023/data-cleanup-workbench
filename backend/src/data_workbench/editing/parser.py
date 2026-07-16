@@ -6,6 +6,7 @@ from typing import Callable, Literal
 from data_workbench.domain.edit import (
     DropColumnCommand,
     EditCommand,
+    MoveColumnCommand,
     RenameColumnCommand,
     ReplaceValueCommand,
     SetCaseCommand,
@@ -22,6 +23,10 @@ SUPPORTED_COMMANDS = (
     'uppercase column <name>',
     'lowercase column <name>',
     'trim whitespace in column <name>',
+    'move column <name> before <name>',
+    'move column <name> after <name>',
+    'move column <name> to start',
+    'move column <name> to end',
 )
 
 _COLUMN = r'("[^"]+"|[^\s\'"]+)'
@@ -79,6 +84,24 @@ def _trim(match: re.Match[str]) -> EditCommand:
     return TrimWhitespaceCommand(column=_column(match.group(1)))
 
 
+def _move_relative(match: re.Match[str]) -> EditCommand:
+    position: Literal["before", "after"] = (
+        "before" if match.group(2).lower() == "before" else "after"
+    )
+    return MoveColumnCommand(
+        column=_column(match.group(1)),
+        position=position,
+        reference=_column(match.group(3)),
+    )
+
+
+def _move_edge(match: re.Match[str]) -> EditCommand:
+    position: Literal["start", "end"] = (
+        "start" if match.group(2).lower() == "start" else "end"
+    )
+    return MoveColumnCommand(column=_column(match.group(1)), position=position)
+
+
 _GRAMMAR: tuple[tuple[re.Pattern[str], Callable[[re.Match[str]], EditCommand]], ...] = (
     (re.compile(rf"^rename column {_COLUMN} to {_COLUMN}$", re.IGNORECASE), _rename),
     (re.compile(rf"^drop column {_COLUMN}$", re.IGNORECASE), _drop),
@@ -101,6 +124,16 @@ _GRAMMAR: tuple[tuple[re.Pattern[str], Callable[[re.Match[str]], EditCommand]], 
     (
         re.compile(rf"^trim(?: whitespace in)? column {_COLUMN}$", re.IGNORECASE),
         _trim,
+    ),
+    (
+        re.compile(
+            rf"^move column {_COLUMN} (before|after) {_COLUMN}$", re.IGNORECASE
+        ),
+        _move_relative,
+    ),
+    (
+        re.compile(rf"^move column {_COLUMN} to (start|end)$", re.IGNORECASE),
+        _move_edge,
     ),
 )
 

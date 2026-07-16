@@ -13,6 +13,7 @@ from data_workbench.domain.edit import (
     EditCommand,
     EditPreview,
     EditSample,
+    MoveColumnCommand,
     RenameColumnCommand,
     ReplaceValueCommand,
     SetCaseCommand,
@@ -75,6 +76,25 @@ def _compile(command: EditCommand, columns: list[str]) -> _CompiledEdit:
             raise InvalidEdit("cannot drop the only column")
         kept = [name for name in columns if name != command.column]
         return _CompiledEdit([quote_identifier(name) for name in kept], kept, None, None)
+    if isinstance(command, MoveColumnCommand):
+        order = [name for name in columns if name != command.column]
+        if command.position in ("before", "after"):
+            reference = command.reference
+            if reference == command.column:
+                raise InvalidEdit("cannot move a column relative to itself")
+            if reference not in columns:
+                raise UnknownColumn(f"column {reference!r} does not exist")
+            index = order.index(str(reference))
+            if command.position == "after":
+                index += 1
+        elif command.position == "start":
+            index = 0
+        else:
+            index = len(order)
+        order.insert(index, command.column)
+        return _CompiledEdit(
+            [quote_identifier(name) for name in order], order, None, None
+        )
     if isinstance(command, ReplaceValueCommand):
         old = _literal(command.old)
         after = (
@@ -125,6 +145,15 @@ def _save_edits(session_dir: Path, edits: list[AppliedEdit]) -> None:
     os.replace(temporary, path)
 
 
+def table_columns(
+    connection: duckdb.DuckDBPyConnection, handle: TableHandle
+) -> list[str]:
+    described = connection.sql(
+        f"DESCRIBE SELECT * FROM ({handle.scan_sql})"
+    ).fetchall()
+    return [str(row[0]) for row in described if str(row[0]) not in SYSTEM_COLUMNS]
+
+
 def resolve_handle(session_dir: Path, base: TableHandle) -> TableHandle:
     applied = [edit for edit in load_edits(session_dir) if edit.table == base.name]
     if not applied:
@@ -145,10 +174,7 @@ class EditEngine:
     def _columns(
         self, connection: duckdb.DuckDBPyConnection, handle: TableHandle
     ) -> list[str]:
-        described = connection.sql(
-            f"DESCRIBE SELECT * FROM ({handle.scan_sql})"
-        ).fetchall()
-        return [str(row[0]) for row in described if str(row[0]) not in SYSTEM_COLUMNS]
+        return table_columns(connection, handle)
 
     def preview(
         self,

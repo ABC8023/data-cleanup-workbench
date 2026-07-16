@@ -81,6 +81,22 @@ def test_parse_date_handles_preserve_and_set_null(
     assert nulled == ["2026-04-03", "2026-01-02", None, None]
 
 
+def test_parse_date_respects_custom_output_format(
+    operation_runner: OperationRunner,
+) -> None:
+    step = ParseDateStep(
+        id="d",
+        columns=["seen"],
+        formats=["%d/%m/%Y", "%Y-%m-%d"],
+        output_format="%d/%m/%Y",
+        on_error="set_null",
+    )
+
+    converted = operation_runner(step, ["2026-01-02", "03/04/2026", "bad", None])
+
+    assert converted == ["02/01/2026", "03/04/2026", None, None]
+
+
 def test_cast_number_normalizes_symbols_and_separators(
     operation_runner: OperationRunner,
 ) -> None:

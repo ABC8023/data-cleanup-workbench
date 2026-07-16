@@ -15,6 +15,24 @@ python scripts/build_frontend.py   # bundle the React UI (requires Node 24)
 data-workbench                     # loopback server + browser, random token
 ```
 
+## AI dictionary assist (optional, off by default)
+
+The Data dictionary panel can ask Claude to draft column descriptions. It is
+disabled unless you opt in at launch, and even then nothing is sent until you
+approve the exact payload shown in the preview dialog.
+
+```bash
+# store your Anthropic API key once (or set ANTHROPIC_API_KEY instead)
+keyring set data-cleanup-workbench ai_api_key
+
+data-workbench --ai anthropic      # built-in Claude provider
+data-workbench --ai-url https://…  # or your own endpoint speaking the same contract
+```
+
+A custom `--ai-url` endpoint receives the previewed JSON payload via POST
+(bearer token from the same keyring entry) and must reply with
+`{"columns": [{"name": …, "description": …}]}`.
+
 ## Develop
 
 ```bash

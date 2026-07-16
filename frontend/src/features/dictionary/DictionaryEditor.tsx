@@ -13,6 +13,18 @@ interface DictionaryEditorProps {
   api: DictionaryAiApi
 }
 
+const AI_ERROR_HINTS: Record<string, string> = {
+  disabled:
+    'AI assist is off. Restart the workbench with --ai anthropic (API key from the OS keyring or ANTHROPIC_API_KEY) to enable it.',
+  no_api_key:
+    'No API key found. Store one with the keyring (service data-cleanup-workbench, entry ai_api_key) or set ANTHROPIC_API_KEY, then restart.',
+  denied: 'The AI provider rejected the API key — check it and try again.',
+  timeout: 'The AI provider timed out — try again in a moment.',
+  unavailable: 'The AI provider could not be reached — check your connection.',
+  malformed: 'The AI reply could not be understood — try again.',
+  expired: 'The approval window expired — preview the request again.',
+}
+
 function AiPreviewDialog({
   preview,
   onApprove,
@@ -61,9 +73,10 @@ export function DictionaryEditor({
       })
       setAiNote('AI suggestions filled empty descriptions.')
     } else {
-      setAiNote(
-        `AI unavailable (${attempt.error?.code ?? 'unknown'}); deterministic dictionary remains.`,
-      )
+      const code = attempt.error?.code ?? 'unknown'
+      const hint =
+        AI_ERROR_HINTS[code] ?? 'The deterministic dictionary remains available.'
+      setAiNote(`AI unavailable (${code}). ${hint}`)
     }
   }
 

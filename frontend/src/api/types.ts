@@ -115,6 +115,40 @@ export interface AiAttempt {
   error: { code: string; message: string } | null
 }
 
+export interface RowsPreview {
+  table: string
+  columns: string[]
+  total_rows: number
+  rows: (string | null)[][]
+}
+
+export type EditCommand = {
+  operation: string
+  column: string
+} & Record<string, unknown>
+
+export interface EditSample {
+  before: string | null
+  after: string | null
+}
+
+export interface EditPreview {
+  command: EditCommand
+  table: string
+  columns_before: string[]
+  columns_after: string[]
+  affected_row_count: number
+  samples: EditSample[]
+}
+
+export interface AppliedEdit {
+  sequence: number
+  table: string
+  command: EditCommand
+  staged_filename: string
+  row_count: number
+}
+
 export interface SavedProfile {
   profile: DatasetProfile
   findings: Finding[]

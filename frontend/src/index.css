@@ -335,3 +335,97 @@ pre {
   overflow-x: auto;
   font-size: 0.85rem;
 }
+
+/* ---- data editor ---- */
+
+.data-grid-wrap {
+  overflow-x: auto;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  margin: 0.75rem 0;
+}
+
+.data-grid {
+  margin: 0;
+  border: none;
+  width: 100%;
+}
+
+.data-grid th {
+  cursor: grab;
+  user-select: none;
+  white-space: nowrap;
+}
+
+.data-grid th.dragging {
+  opacity: 0.5;
+  cursor: grabbing;
+}
+
+.data-grid td {
+  white-space: nowrap;
+  max-width: 18rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.command-row {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+  margin: 0.75rem 0;
+}
+
+.command-row input {
+  flex: 1;
+  min-width: 18rem;
+}
+
+.edit-preview {
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 0.9rem 1.1rem;
+  margin: 0.75rem 0;
+}
+
+/* ---- date format editor ---- */
+
+.format-editor {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 0.75rem 1rem;
+  margin: 0.75rem 0;
+}
+
+.format-editor legend {
+  padding: 0 0.4rem;
+  font-weight: 600;
+  font-size: 0.9rem;
+}
+
+.format-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin: 0.4rem 0;
+}
+
+.format-row input {
+  font-family: ui-monospace, monospace;
+  min-width: 12rem;
+}
+
+.format-output {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  margin-top: 0.6rem;
+  font-weight: 500;
+  font-size: 0.9rem;
+}
+
+.format-output input {
+  font-family: ui-monospace, monospace;
+}

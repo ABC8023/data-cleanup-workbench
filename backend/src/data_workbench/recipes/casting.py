@@ -35,7 +35,11 @@ class ParseDateOperation:
         attempts = ", ".join(
             f"try_strptime({text}, {quote_literal(fmt)})" for fmt in step.formats
         )
-        return f"CAST(CAST(COALESCE({attempts}) AS DATE) AS VARCHAR)"
+        parsed = f"CAST(COALESCE({attempts}) AS DATE)"
+        return (
+            f"CAST(strftime({parsed}, {quote_literal(step.output_format)})"
+            " AS VARCHAR)"
+        )
 
     def compile(self, step: ParseDateStep, input_sql: str) -> CompiledOperation:
         replacements: dict[str, str] = {}

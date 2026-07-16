@@ -60,6 +60,62 @@ describe('IssueList', () => {
     )
   })
 
+  it('lets the user edit the suggested date formats before previewing', async () => {
+    const user = userEvent.setup()
+    const onPreview = vi.fn().mockResolvedValue(PREVIEW)
+    render(
+      <IssueList
+        findings={[MIXED_DATE_FINDING]}
+        onPreview={onPreview}
+        onApprove={vi.fn()}
+      />,
+    )
+
+    const second = screen.getByLabelText('Input format 2')
+    expect(second).toHaveValue('%d/%m/%Y')
+    await user.clear(second)
+    await user.type(second, '%m/%d/%Y')
+
+    const output = screen.getByLabelText('Output format')
+    await user.clear(output)
+    await user.type(output, '%d %b %Y')
+
+    await user.click(screen.getByRole('button', { name: /review mixed date/i }))
+
+    expect(onPreview).toHaveBeenCalledWith(
+      expect.objectContaining({
+        operation: 'parse_date',
+        formats: ['%Y-%m-%d', '%m/%d/%Y'],
+        output_format: '%d %b %Y',
+      }),
+    )
+  })
+
+  it('clears a stale preview when formats change', async () => {
+    const user = userEvent.setup()
+    render(
+      <IssueList
+        findings={[MIXED_DATE_FINDING]}
+        onPreview={vi.fn().mockResolvedValue(PREVIEW)}
+        onApprove={vi.fn()}
+      />,
+    )
+
+    await user.click(screen.getByRole('button', { name: /review mixed date/i }))
+    expect(await screen.findByRole('table', { name: 'Before' })).toBeVisible()
+
+    expect(
+      screen.getByRole('button', { name: /update preview/i }),
+    ).toBeVisible()
+
+    await user.type(screen.getByLabelText('Input format 1'), 'x')
+
+    expect(screen.queryByRole('table', { name: 'Before' })).toBeNull()
+    expect(
+      screen.getByRole('button', { name: /review mixed date/i }),
+    ).toBeVisible()
+  })
+
   it('offers no review action for informational findings', () => {
     render(
       <IssueList

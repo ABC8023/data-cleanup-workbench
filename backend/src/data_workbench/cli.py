@@ -34,6 +34,8 @@ def build_server(
     workspace: Path | None = None,
     open_browser: bool = True,
     token: str | None = None,
+    ai_provider: str | None = None,
+    ai_provider_url: str | None = None,
 ) -> uvicorn.Server:
     validate_loopback_host(host)
     resolved_port = port if port is not None else reserve_ephemeral_port(host)
@@ -42,6 +44,8 @@ def build_server(
     config = AppConfig(
         workspace=workspace if workspace is not None else default_workspace(),
         allowed_origin=f"http://{host}:{resolved_port}",
+        ai_provider="anthropic" if ai_provider == "anthropic" else None,
+        ai_provider_url=ai_provider_url,
     )
     app = create_app(config, token)
     server = uvicorn.Server(
@@ -69,6 +73,21 @@ def main() -> None:
         default=None,
         help="Fixed session token (testing only; random by default)",
     )
+    parser.add_argument(
+        "--ai",
+        choices=["anthropic"],
+        default=None,
+        help=(
+            "Enable the AI dictionary assist. 'anthropic' uses Claude; the API"
+            " key is read from the OS keyring (service data-cleanup-workbench,"
+            " entry ai_api_key) or the ANTHROPIC_API_KEY environment variable."
+        ),
+    )
+    parser.add_argument(
+        "--ai-url",
+        default=None,
+        help="Custom HTTPS endpoint for the AI dictionary assist instead of --ai",
+    )
     args = parser.parse_args()
     build_server(
         host=args.host,
@@ -76,6 +95,8 @@ def main() -> None:
         workspace=args.workspace,
         open_browser=not args.no_browser,
         token=args.token,
+        ai_provider=args.ai,
+        ai_provider_url=args.ai_url,
     ).run()
 
 

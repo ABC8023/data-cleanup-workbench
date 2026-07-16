@@ -34,6 +34,7 @@ class NormalizeTextStep(BaseStep):
 class ParseDateStep(BaseStep):
     operation: Literal["parse_date"] = "parse_date"
     formats: list[str] = Field(min_length=1)
+    output_format: str = Field(default="%Y-%m-%d", min_length=1)
 
 
 class CastNumberStep(BaseStep):

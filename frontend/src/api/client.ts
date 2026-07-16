@@ -1,10 +1,13 @@
 import type {
   AiAttempt,
   AiPayloadPreview,
+  AppliedEdit,
+  EditPreview,
   JobStatus,
   OutputManifest,
   PreviewResult,
   Recipe,
+  RowsPreview,
   SavedProfile,
   SessionManifest,
 } from './types'
@@ -101,6 +104,28 @@ export class ApiClient {
         approved: true,
       }),
     })
+  }
+
+  getRows(sessionId: string, limit = 50): Promise<RowsPreview> {
+    return this.request(`/api/sessions/${sessionId}/rows?limit=${limit}`)
+  }
+
+  previewEdit(sessionId: string, command: string): Promise<EditPreview> {
+    return this.request(`/api/sessions/${sessionId}/edits/preview`, {
+      method: 'POST',
+      body: JSON.stringify({ command }),
+    })
+  }
+
+  applyEdit(sessionId: string, command: string): Promise<AppliedEdit> {
+    return this.request(`/api/sessions/${sessionId}/edits`, {
+      method: 'POST',
+      body: JSON.stringify({ command, approved: true }),
+    })
+  }
+
+  listEdits(sessionId: string): Promise<AppliedEdit[]> {
+    return this.request(`/api/sessions/${sessionId}/edits`)
   }
 
   saveDictionary(

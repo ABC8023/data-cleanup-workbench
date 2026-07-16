@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Annotated, Literal, Union
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 
 class BaseEditCommand(BaseModel):
@@ -35,6 +35,21 @@ class TrimWhitespaceCommand(BaseEditCommand):
     operation: Literal["trim_whitespace"] = "trim_whitespace"
 
 
+class MoveColumnCommand(BaseEditCommand):
+    operation: Literal["move_column"] = "move_column"
+    position: Literal["before", "after", "start", "end"]
+    reference: str | None = None
+
+    @model_validator(mode="after")
+    def reference_matches_position(self) -> MoveColumnCommand:
+        relative = self.position in ("before", "after")
+        if relative and self.reference is None:
+            raise ValueError("move before/after requires a reference column")
+        if not relative and self.reference is not None:
+            raise ValueError("move to start/end takes no reference column")
+        return self
+
+
 EditCommand = Annotated[
     Union[
         RenameColumnCommand,
@@ -42,6 +57,7 @@ EditCommand = Annotated[
         ReplaceValueCommand,
         SetCaseCommand,
         TrimWhitespaceCommand,
+        MoveColumnCommand,
     ],
     Field(discriminator="operation"),
 ]

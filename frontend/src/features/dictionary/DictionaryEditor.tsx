@@ -70,18 +70,26 @@ export function DictionaryEditor({
   return (
     <section aria-labelledby="dictionary-heading">
       <h2 id="dictionary-heading">Data dictionary</h2>
-      {columns.map((column) => (
-        <label key={column.name}>
-          {column.name} ({column.inferred_type})
-          <input
-            type="text"
-            value={draft[column.name] ?? ''}
-            onChange={(event) =>
-              setDraft({ ...draft, [column.name]: event.target.value })
-            }
-          />
-        </label>
-      ))}
+      <p className="hint">
+        Describe what each column means; descriptions are included in the
+        exported documentation. The optional AI assist shows you the exact
+        payload before anything is sent — and sends nothing without approval.
+      </p>
+      <div className="dict-grid">
+        {columns.map((column) => (
+          <label key={column.name}>
+            {column.name} ({column.inferred_type})
+            <input
+              type="text"
+              placeholder="What does this column contain?"
+              value={draft[column.name] ?? ''}
+              onChange={(event) =>
+                setDraft({ ...draft, [column.name]: event.target.value })
+              }
+            />
+          </label>
+        ))}
+      </div>
       <button type="button" onClick={() => onSave(draft)}>
         Save descriptions
       </button>

@@ -80,6 +80,10 @@ export function IssueList({ findings, onPreview, onApprove }: IssueListProps) {
   return (
     <section aria-labelledby="issues-heading">
       <h2 id="issues-heading">Findings</h2>
+      <p className="hint">
+        Issues detected in your data. Click Review to see exactly what a fix
+        would change — nothing is applied until you approve it.
+      </p>
       {findings.length === 0 && <p>No issues detected.</p>}
       {findings.map((finding) => (
         <IssueItem

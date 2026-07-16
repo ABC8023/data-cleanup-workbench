@@ -57,7 +57,11 @@ export function OutputPanel({
     return (
       <section aria-labelledby="outputs-heading">
         <h2 id="outputs-heading">Outputs</h2>
-        <p>Execute the approved recipe to produce downloadable outputs.</p>
+        <p className="hint">
+          Runs your approved recipe against the full dataset and produces the
+          cleaned file, a quality report, the data dictionary, and the recipe
+          itself — each with a checksum, ready to download.
+        </p>
         <button type="button" onClick={onExecute}>
           Execute recipe
         </button>

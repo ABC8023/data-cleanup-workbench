@@ -138,6 +138,11 @@ export function App({ api: injectedApi }: { api?: ApiClient }) {
   return (
     <main>
       <h1>Data Cleanup Workbench</h1>
+      <p className="tagline">
+        Upload a dataset, review detected issues, approve fixes with a
+        before/after preview, and download the cleaned result. Everything
+        stays on this machine; your original file is never modified.
+      </p>
       {boot.missingToken && (
         <section role="alert">
           <p>

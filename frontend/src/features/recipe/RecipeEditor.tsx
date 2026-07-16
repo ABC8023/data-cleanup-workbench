@@ -21,7 +21,13 @@ export function RecipeEditor({ steps, onChange }: RecipeEditorProps) {
   return (
     <section aria-labelledby="recipe-heading">
       <h2 id="recipe-heading">Recipe</h2>
-      {steps.length === 0 && <p>No approved steps yet.</p>}
+      <p className="hint">
+        Your approved fixes, applied in order when you execute. Reorder or
+        remove steps freely — the source data is untouched until then.
+      </p>
+      {steps.length === 0 && (
+        <p>No approved steps yet — approve a finding above to add one.</p>
+      )}
       <ol>
         {steps.map((step, index) => (
           <li key={step.id}>

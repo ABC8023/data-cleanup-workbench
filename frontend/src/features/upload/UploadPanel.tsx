@@ -32,6 +32,10 @@ export function UploadPanel({ api, onSession }: UploadPanelProps) {
   return (
     <section aria-labelledby="upload-heading">
       <h2 id="upload-heading">Upload</h2>
+      <p className="hint">
+        Pick a CSV, Excel (.xlsx), JSON, NDJSON, or Parquet file up to 5 GB,
+        then start profiling. A read-only copy is staged for analysis.
+      </p>
       <label>
         Choose dataset
         <input
